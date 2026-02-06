@@ -8,9 +8,9 @@
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
 
-#include "wsland.h"
+#include "wsland/freerdp.h"
 
-void wsland_freerdp_tls_generate(void) {
+void wsland_freerdp_generate_tls(wsland_freerdp *freerdp) {
     RSA *rsa;
     X509 *x509;
     EVP_PKEY *pkey;
@@ -41,8 +41,8 @@ void wsland_freerdp_tls_generate(void) {
     assert(bio != NULL);
     assert(PEM_write_bio_PrivateKey(bio, pkey, NULL, NULL, 0, NULL, NULL) == 1);
     BIO_get_mem_ptr(bio, &mem);
-    server.freerdp.tls_key_content = (char*)calloc(mem->length + 1, 1);
-    memcpy(server.freerdp.tls_key_content, mem->data, mem->length);
+    freerdp->key_content = (char*)calloc(mem->length + 1, 1);
+    memcpy(freerdp->key_content, mem->data, mem->length);
     BIO_free_all(bio);
 
     x509 = X509_new();
@@ -70,8 +70,8 @@ void wsland_freerdp_tls_generate(void) {
     assert(bio_x509 != NULL);
     PEM_write_bio_X509(bio_x509, x509);
     BIO_get_mem_ptr(bio_x509, &mem_x509);
-    server.freerdp.tls_cert_content = (char*)calloc(mem_x509->length + 1, 1);
-    memcpy(server.freerdp.tls_cert_content, mem_x509->data, mem_x509->length);
+    freerdp->cert_content = (char*)calloc(mem_x509->length + 1, 1);
+    memcpy(freerdp->cert_content, mem_x509->data, mem_x509->length);
     BIO_free_all(bio_x509);
 
     X509_free(x509);

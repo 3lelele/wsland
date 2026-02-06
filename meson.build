@@ -2,21 +2,24 @@ project('wsland', 'c', version : '1.0.0', default_options : ['warning_level=3', 
 
 sources = files(
     'src/main.c',
-    'src/wsland.c',
-    'src/freerdp.c',
-    'src/freerdp_tls.c',
-    'src/freerdp_shell.c',
-    'src/freerdp_surface.c',
-    'src/freerdp_instance.c',
-    'src/freerdp_dispatch.c',
-    'src/freerdp_keyboard.c',
-    'src/freerdp_ctx_server_rail.c',
-    'src/freerdp_ctx_server_disp.c',
-    'src/freerdp_ctx_server_rdpgfx.c',
-    'src/freerdp_ctx_server_drdynvc.c',
-    'src/freerdp_ctx_server_applist.c',
-    'src/freerdp_ctx_server_gfxredir.c',
-    'src/freerdp_ctx_server_rail_language.c',
+    'src/utils/log.c',
+    'src/utils/time.c',
+    'src/utils/config.c',
+    'src/server/server.c',
+    'src/server/handle.c',
+    'src/server/output.c',
+    'src/adapter/adapter.c',
+    'src/adapter/handle.c',
+    'src/freerdp/freerdp.c',
+    'src/freerdp/openssl.c',
+    'src/freerdp/handle.c',
+    'src/freerdp/peer.c',
+    'src/freerdp/context/rail.c',
+    'src/freerdp/context/disp.c',
+    'src/freerdp/context/rdpgfx.c',
+    'src/freerdp/context/drdynvc.c',
+    'src/freerdp/context/applist.c',
+    'src/freerdp/context/gfxredir.c',
 )
 
 config_h = configuration_data()
@@ -77,9 +80,10 @@ wayland_kwargs = {
     ],
 }
 
+include_dir = include_directories('include')
 subdir('protocol')
 
-executable('wsland', [sources, protocols_server_header['xdg-shell']], include_directories : [], dependencies : [
+executable('wsland', [sources, protocols_server_header['xdg-shell']], include_directories : [include_dir], dependencies : [
     dep_wlroots, dep_winpr, dep_freerdp, dep_freerdp_server, dep_rdpapplist, dep_wayland_server,
     dep_pixman, def_cairo, dep_openssl, dep_xkbcommon,
 ])
