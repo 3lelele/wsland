@@ -41,6 +41,7 @@ typedef struct wsland_peer_handle {
 
     void (*rail_client_activate)(struct wsland_peer *peer, const RAIL_ACTIVATE_ORDER *arg);
     void (*rail_client_sysparam)(struct wsland_peer *peer, const RAIL_SYSPARAM_ORDER *arg);
+    void (*rdpgfx_frame_acknowledge)(struct wsland_peer *peer);
 } wsland_peer_handle;
 
 typedef struct wsland_freerdp {

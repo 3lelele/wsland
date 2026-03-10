@@ -324,6 +324,10 @@ static void rail_client_sysparam(wsland_peer *peer, const RAIL_SYSPARAM_ORDER *a
     }
 }
 
+static void rdpgfx_frame_acknowledge(wsland_peer *peer) {
+    wsland_adapter_frame_for_peer(peer);
+}
+
 wsland_peer_handle wsland_peer_handle_impl = {
     .xf_peer_adjust_monitor_layout = xf_peer_adjust_monitor_layout,
     .xf_peer_capabilities = xf_peer_capabilities,
@@ -339,6 +343,7 @@ wsland_peer_handle wsland_peer_handle_impl = {
 
     .rail_client_activate = rail_client_activate,
     .rail_client_sysparam = rail_client_sysparam,
+    .rdpgfx_frame_acknowledge = rdpgfx_frame_acknowledge,
 };
 
 void wsland_peer_handle_init(wsland_peer *peer) {

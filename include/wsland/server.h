@@ -14,7 +14,6 @@
 #define WSLAND_DEFAULT_REFRESH (60 * 1000) // 60 Hz
 
 struct wsland_window;
-struct wsland_toplevel;
 
 extern const struct wlr_keyboard_impl wsland_keyboard_impl;
 extern const struct wlr_pointer_impl wsland_pointer_impl;
@@ -25,7 +24,7 @@ typedef enum wsland_cursor_mode {
     WSLAND_CURSOR_MOVE,
 } wsland_cursor_mode;
 
-typedef struct wsland_server_handle {
+typedef struct wsland_wayland_handle {
     void (*server_new_output)(struct wl_listener *listener, void *data);
     void (*server_new_input)(struct wl_listener *listener, void *data);
     void (*server_new_xdg_toplevel)(struct wl_listener *listener, void *data);
@@ -38,36 +37,20 @@ typedef struct wsland_server_handle {
     void (*seat_request_cursor)(struct wl_listener *listener, void *data);
     void (*seat_request_set_selection)(struct wl_listener *listener, void *data);
 
-    void (*wsland_xwayland_new_surface)(struct wl_listener *listener, void *data);
+    void (*server_window_focus)(struct wsland_window *window);
+    void (*server_window_activate)(struct wsland_window *window, bool enabled);
+    struct wsland_window* (*server_window_fetch_parent)(struct wsland_window *window);
+    char* (*server_window_fetch_title)(struct wsland_window *window);
+} wsland_wayland_handle;
 
-    void (*server_focus_toplevel)(struct wsland_toplevel *toplevel);
-} wsland_server_handle;
+typedef struct wsland_xwayland_handle {
+    void (*ready)(struct wl_listener *listener, void *data);
+    void (*new_surface)(struct wl_listener *listener, void *data);
 
-typedef struct wsland_toplevel {
-    struct wlr_xdg_toplevel *toplevel;
-    struct wlr_scene_tree *tree;
-    struct wlr_box before;
-
-    struct {
-        struct wl_listener map;
-        struct wl_listener unmap;
-        struct wl_listener commit;
-        struct wl_listener destroy;
-        struct wl_listener request_move;
-        struct wl_listener request_resize;
-        struct wl_listener request_maximize;
-        struct wl_listener request_fullscreen;
-    } events;
-
-
-    struct wl_list server_link;
-    struct wl_list parent_link;
-    struct wl_list children;
-
-    bool window_dirty;
-    struct wsland_window *window_data;
-    struct wsland_server *server;
-} wsland_toplevel;
+    void (*server_window_activate)(struct wsland_window *window, bool enabled);
+    struct wsland_window* (*server_window_fetch_parent)(struct wsland_window *window);
+    char* (*server_window_fetch_title)(struct wsland_window *window);
+} wsland_xwayland_handle;
 
 typedef struct wsland_popup {
     struct wlr_xdg_popup *popup;
@@ -87,7 +70,7 @@ typedef struct wsland_scene_buffer {
         struct wl_listener scene_surface_destroy;
     } events;
 
-    wsland_toplevel *toplevel;
+    struct wsland_window *window;
 } wsland_scene_buffer;
 
 typedef struct wsland_keyboard {
@@ -154,12 +137,12 @@ typedef struct wsland_server {
 
     struct wl_list outputs;
     struct wl_list keyboards;
-    struct wl_list toplevels;
+    struct wl_list windows;
 
     struct {
         double x, y;
         struct wlr_box geobox;
-        wsland_toplevel *toplevel;
+        struct wsland_window *window;
     } grab;
 
     struct {
@@ -189,7 +172,8 @@ typedef struct wsland_server {
         struct wl_listener request_cursor;
         struct wl_listener request_set_selection;
 
-        struct wl_listener wsland_xwayland_new_surface;
+        struct wl_listener xwayland_ready;
+        struct wl_listener xwayland_new_surface;
 
         struct wl_listener wsland_cursor_destroy;
 
@@ -197,14 +181,16 @@ typedef struct wsland_server {
         struct wl_signal wsland_window_destroy;
 
         struct wl_signal wsland_cursor_frame;
-        struct wl_signal wsland_output_frame;
+        struct wl_signal wsland_window_frame;
     } events;
 
     wsland_config *config;
-    wsland_server_handle *handle;
+    wsland_wayland_handle *handle;
+    wsland_xwayland_handle *xhandle;
 } wsland_server;
 
-wsland_server_handle *wsland_server_handle_init(wsland_server *server);
+wsland_wayland_handle *wsland_wayland_handle_init(wsland_server *server);
+wsland_xwayland_handle *wsland_xwayland_handle_init(wsland_server *server);
 
 wsland_output *wsland_output_create(wsland_server *server, int width, int height);
 bool wlr_output_is_wsland(struct wlr_output *wlr_output);

@@ -1,5 +1,3 @@
-#include "wlr/xwayland/server.h"
-
 #include <assert.h>
 #include <stdlib.h>
 
@@ -17,6 +15,7 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_cursor.h>
 
+#include <wlr/xwayland/server.h>
 #include <wlr/xwayland/xwayland.h>
 
 #include "wsland/server.h"
@@ -153,15 +152,21 @@ wsland_server *wsland_server_create(wsland_config *config) {
         goto create_failed;
     }
 
+    server->handle = wsland_wayland_handle_init(server);
+    if (!server->handle) {
+        wsland_log(SERVER, ERROR, "failed to invoke wsland_wayland_handle_init");
+        goto create_failed;
+    }
+
     server->xwayland = wlr_xwayland_create(server->display, server->compositor, true);
     if (!server->xwayland) {
         wsland_log(SERVER, ERROR,  "failed to invoke wlr_xwayland_create");
         goto create_failed;
     }
 
-    server->handle = wsland_server_handle_init(server);
-    if (!server->handle) {
-        wsland_log(SERVER, ERROR, "failed to invoke wsland_server_handle_init");
+    server->xhandle = wsland_xwayland_handle_init(server);
+    if (!server->xhandle) {
+        wsland_log(SERVER, ERROR, "failed to invoke wsland_xwayland_handle_init");
         goto create_failed;
     }
 
@@ -201,10 +206,10 @@ wsland_server *wsland_server_create(wsland_config *config) {
         wl_signal_add(&server->seat->events.request_set_selection, &server->events.request_set_selection);
 
         // xwayland event
-        wlr_xwayland_set_seat(server->xwayland, server->seat);
-
-        server->events.wsland_xwayland_new_surface.notify = server->handle->wsland_xwayland_new_surface;
-        wl_signal_add(&server->xwayland->events.new_surface, &server->events.wsland_xwayland_new_surface);
+        server->events.xwayland_ready.notify = server->xhandle->ready;
+        wl_signal_add(&server->xwayland->events.ready, &server->events.xwayland_ready);
+        server->events.xwayland_new_surface.notify = server->xhandle->new_surface;
+        wl_signal_add(&server->xwayland->events.new_surface, &server->events.xwayland_new_surface);
     }
 
     server->socket_name = wl_display_add_socket_auto(server->display);
@@ -219,13 +224,13 @@ wsland_server *wsland_server_create(wsland_config *config) {
     }
 
     wl_list_init(&server->outputs);
+    wl_list_init(&server->windows);
     wl_list_init(&server->keyboards);
-    wl_list_init(&server->toplevels);
     wl_signal_init(&server->events.wsland_window_motion);
     wl_signal_init(&server->events.wsland_window_destroy);
 
     wl_signal_init(&server->events.wsland_cursor_frame);
-    wl_signal_init(&server->events.wsland_output_frame);
+    wl_signal_init(&server->events.wsland_window_frame);
     return server;
 create_failed:
     return NULL;
@@ -244,7 +249,7 @@ void wsland_server_destroy(wsland_server *server) {
         assert(wl_list_empty(&server->events.wsland_window_destroy.listener_list));
 
         assert(wl_list_empty(&server->events.wsland_cursor_frame.listener_list));
-        assert(wl_list_empty(&server->events.wsland_output_frame.listener_list));
+        assert(wl_list_empty(&server->events.wsland_window_frame.listener_list));
 
         wl_display_destroy_clients(server->display);
 

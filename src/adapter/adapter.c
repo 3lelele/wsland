@@ -14,24 +14,42 @@
 #include "wsland/freerdp.h"
 #include "wsland/utils/log.h"
 
-void wsland_adapter_activate_for_peer(wsland_peer *peer, uint32_t window_id, bool enabled) {
-    wsland_toplevel *toplevel;
-    wl_list_for_each(toplevel, &peer->freerdp->adapter->server->toplevels, server_link) {
-        wsland_window *window = toplevel->window_data;
 
+void wsland_adapter_frame_for_peer(wsland_peer *peer) {
+    wsland_output *output;
+    wl_list_for_each(output, &peer->freerdp->adapter->server->outputs, server_link) {
+        wlr_output_schedule_frame(&output->output);
+    }
+}
+
+void wsland_adapter_activate_for_peer(wsland_peer *peer, uint32_t window_id, bool enabled) {
+    wsland_server *server = peer->freerdp->adapter->server;
+
+    wsland_window *window;
+    wl_list_for_each(window, &server->windows, server_link) {
         if (window && window->window_id == window_id) {
             if (enabled) {
-                wlr_scene_node_raise_to_top(&toplevel->tree->node);
+                wlr_scene_node_raise_to_top(&window->tree->node);
             } else {
-                wlr_scene_node_lower_to_bottom(&toplevel->tree->node);
+                wlr_scene_node_lower_to_bottom(&window->tree->node);
             }
-            wlr_xdg_toplevel_set_activated(toplevel->toplevel, enabled);
+
+            switch (window->type) {
+                case WAYLAND:
+                    server->handle->server_window_activate(window, enabled);
+                    break;
+                case XWAYLAND:
+                    server->xhandle->server_window_activate(window, enabled);
+                    break;
+            }
         }
     }
 }
 
 void wsland_adapter_work_area_for_peer(wsland_peer *peer, struct wlr_box area) {
-    struct wlr_output *wo = wlr_output_layout_output_at(peer->freerdp->adapter->server->output_layout, area.x, area.y);
+    wsland_server *server = peer->freerdp->adapter->server;
+
+    struct wlr_output *wo = wlr_output_layout_output_at(server->output_layout, area.x, area.y);
     if (wo) {
         wsland_output *output = wo->data;
         if (output) {
@@ -41,7 +59,9 @@ void wsland_adapter_work_area_for_peer(wsland_peer *peer, struct wlr_box area) {
 }
 
 void wsland_adapter_taskbar_area_for_peer(wsland_peer *peer, struct wlr_box area) {
-    struct wlr_output *wo = wlr_output_layout_output_at(peer->freerdp->adapter->server->output_layout, area.x, area.y);
+    wsland_server *server = peer->freerdp->adapter->server;
+
+    struct wlr_output *wo = wlr_output_layout_output_at(server->output_layout, area.x, area.y);
     if (wo) {
         wsland_output *output = wo->data;
         if (output) {
@@ -51,6 +71,8 @@ void wsland_adapter_taskbar_area_for_peer(wsland_peer *peer, struct wlr_box area
 }
 
 void wsland_adapter_create_keyboard_for_peer(wsland_peer *peer, rdpSettings *settings) {
+    wsland_server *server = peer->freerdp->adapter->server;
+
     wsland_keyboard *keyboard = calloc(1, sizeof(*keyboard));
     if (!keyboard) {
         wsland_log(ADAPTER, ERROR, "calloc failed for wsland_keyboard");
@@ -69,17 +91,19 @@ void wsland_adapter_create_keyboard_for_peer(wsland_peer *peer, rdpSettings *set
     wlr_keyboard_set_repeat_info(&keyboard->keyboard, 25, 600);
 
     keyboard->keyboard.base.data = keyboard;
-    wl_signal_emit_mutable(&peer->freerdp->adapter->server->backend->events.new_input, &keyboard->keyboard.base);
+    wl_signal_emit_mutable(&server->backend->events.new_input, &keyboard->keyboard.base);
 }
 
 void wsland_adapter_create_output_for_peer(wsland_peer *peer, rdpMonitor *monitor) {
+    wsland_server *server = peer->freerdp->adapter->server;
+
     struct wlr_output_mode mode = {0};
     mode.width = monitor->width;
     mode.height = monitor->height;
     mode.preferred = monitor->is_primary;
     mode.refresh = WSLAND_DEFAULT_REFRESH;
 
-    wsland_output *output = wsland_output_create(peer->freerdp->adapter->server, monitor->width, monitor->height);
+    wsland_output *output = wsland_output_create(server, monitor->width, monitor->height);
     if (!output) {
         wsland_log(ADAPTER, ERROR, "failed to invoke wsland_output_init");
         return;
@@ -115,8 +139,8 @@ wsland_adapter* wsland_adapter_create(wsland_server *server) {
         adapter->events.wsland_cursor_frame.notify = adapter->handle->wsland_cursor_frame;
         wl_signal_add(&server->events.wsland_cursor_frame, &adapter->events.wsland_cursor_frame);
 
-        adapter->events.wsland_output_frame.notify = adapter->handle->wsland_output_frame;
-        wl_signal_add(&server->events.wsland_output_frame, &adapter->events.wsland_output_frame);
+        adapter->events.wsland_window_frame.notify = adapter->handle->wsland_window_frame;
+        wl_signal_add(&server->events.wsland_window_frame, &adapter->events.wsland_window_frame);
     }
     return adapter;
 
@@ -131,7 +155,7 @@ void wsland_adapter_destroy(wsland_adapter *adapter) {
         wl_list_remove(&adapter->events.wsland_window_destroy.link);
 
         wl_list_remove(&adapter->events.wsland_cursor_frame.link);
-        wl_list_remove(&adapter->events.wsland_output_frame.link);
+        wl_list_remove(&adapter->events.wsland_window_frame.link);
         free(adapter);
     }
 }
