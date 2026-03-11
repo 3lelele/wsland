@@ -152,21 +152,15 @@ wsland_server *wsland_server_create(wsland_config *config) {
         goto create_failed;
     }
 
-    server->handle = wsland_wayland_handle_init(server);
+    server->handle = wsland_server_handle_init(server);
     if (!server->handle) {
-        wsland_log(SERVER, ERROR, "failed to invoke wsland_wayland_handle_init");
+        wsland_log(SERVER, ERROR, "failed to invoke wsland_server_handle_init");
         goto create_failed;
     }
 
     server->xwayland = wlr_xwayland_create(server->display, server->compositor, true);
     if (!server->xwayland) {
         wsland_log(SERVER, ERROR,  "failed to invoke wlr_xwayland_create");
-        goto create_failed;
-    }
-
-    server->xhandle = wsland_xwayland_handle_init(server);
-    if (!server->xhandle) {
-        wsland_log(SERVER, ERROR, "failed to invoke wsland_xwayland_handle_init");
         goto create_failed;
     }
 
@@ -177,12 +171,6 @@ wsland_server *wsland_server_create(wsland_config *config) {
 
         server->events.new_input.notify = server->handle->server_new_input;
         wl_signal_add(&server->backend->events.new_input, &server->events.new_input);
-
-        // xdg shell event
-        server->events.new_xdg_toplevel.notify = server->handle->server_new_xdg_toplevel;
-        wl_signal_add(&server->xdg_shell->events.new_toplevel, &server->events.new_xdg_toplevel);
-        server->events.new_xdg_popup.notify = server->handle->server_new_xdg_popup;
-        wl_signal_add(&server->xdg_shell->events.new_popup, &server->events.new_xdg_popup);
 
         // cursor event
         wlr_cursor_attach_output_layout(server->cursor, server->output_layout);
@@ -205,11 +193,11 @@ wsland_server *wsland_server_create(wsland_config *config) {
         server->events.request_set_selection.notify = server->handle->seat_request_set_selection;
         wl_signal_add(&server->seat->events.request_set_selection, &server->events.request_set_selection);
 
+        // xdg shell event
+        wayland_event_init(server);
+
         // xwayland event
-        server->events.xwayland_ready.notify = server->xhandle->ready;
-        wl_signal_add(&server->xwayland->events.ready, &server->events.xwayland_ready);
-        server->events.xwayland_new_surface.notify = server->xhandle->new_surface;
-        wl_signal_add(&server->xwayland->events.new_surface, &server->events.xwayland_new_surface);
+        xwayland_event_init(server);
     }
 
     server->socket_name = wl_display_add_socket_auto(server->display);
@@ -253,8 +241,8 @@ void wsland_server_destroy(wsland_server *server) {
 
         wl_display_destroy_clients(server->display);
 
-        wl_list_remove(&server->events.new_xdg_toplevel.link);
-        wl_list_remove(&server->events.new_xdg_popup.link);
+        wl_list_remove(&server->events.new_wayland_toplevel.link);
+        wl_list_remove(&server->events.new_wayland_popup.link);
 
         wl_list_remove(&server->events.cursor_motion.link);
         wl_list_remove(&server->events.cursor_motion_absolute.link);

@@ -9,6 +9,14 @@ enum adapter_type {
     WAYLAND, XWAYLAND
 };
 
+typedef struct wsland_frame_buffer {
+    uint32_t frame_id;
+    void *alpha;
+    void *ptr;
+
+    struct wl_list link;
+} wsland_frame_buffer;
+
 typedef struct wsland_window {
     enum adapter_type type;
     struct wlr_scene_tree *tree;
@@ -48,6 +56,7 @@ typedef struct wsland_window {
     struct wl_list children;
 
     wsland_server *server;
+    wsland_window_handle *handle;
 } wsland_window;
 
 typedef struct wsland_cursor {
@@ -59,7 +68,6 @@ typedef struct wsland_cursor {
 } wsland_cursor;
 
 
-void wsland_adapter_frame_for_peer(wsland_peer *peer);
 void wsland_adapter_activate_for_peer(wsland_peer *peer, uint32_t window_id, bool enabled);
 void wsland_adapter_work_area_for_peer(wsland_peer *peer, struct wlr_box area);
 void wsland_adapter_taskbar_area_for_peer(wsland_peer *peer, struct wlr_box area);
@@ -76,6 +84,8 @@ typedef struct wsland_adapter_handle {
 } wsland_adapter_handle;
 
 typedef struct wsland_adapter {
+    struct wl_list buffers;
+
     struct {
         struct wl_listener wsland_window_motion;
         struct wl_listener wsland_window_destroy;

@@ -9,9 +9,21 @@
 #include "wsland/utils/log.h"
 
 
-static wsland_output *wsland_output_fetch(struct wsland_window *window) {
+static char* window_fetch_title(wsland_window *window) {
+    return window->xwayland->title;
+}
+
+static wsland_window* window_fetch_parent(struct wsland_window *window) {
+    if (window->xwayland->parent) {
+        return window->xwayland->parent->data;
+    }
+    return NULL;
+}
+
+static wsland_output *window_fetch_output(struct wsland_window *window) {
     int pos_x = window->tree->node.x < 0 ? 0 : window->tree->node.x;
     int pos_y = window->tree->node.y < 0 ? 0 : window->tree->node.y;
+
     if (window->xwayland->parent) {
         wsland_window *parent = window->xwayland->parent->data;
         if (parent) {
@@ -29,6 +41,10 @@ static wsland_output *wsland_output_fetch(struct wsland_window *window) {
     return NULL;
 }
 
+static void window_activate(struct wsland_window *window, bool enabled) {
+    wlr_xwayland_surface_activate(window->xwayland, enabled);
+}
+
 static void server_xwayland_request_move(struct wl_listener *listener, void *data) {
     wsland_window *window = wl_container_of(listener, window, events.request_move);
 }
@@ -41,7 +57,7 @@ static void server_xwayland_map(struct wl_listener *listener, void *data) {
     );
 
     {
-        wsland_output *output = wsland_output_fetch(window);
+        wsland_output *output = window_fetch_output(window);
         if (output) {
             struct wlr_box bounds = {0};
             wlr_surface_get_extends(window->xwayland->surface, &bounds);
@@ -88,10 +104,18 @@ static void wsland_xwayland_ready(struct wl_listener *listener, void *data) {
     wlr_xwayland_set_seat(server->xwayland, server->seat);
 }
 
+wsland_window_handle wsland_xwayland_window_impl = {
+    .window_fetch_title = window_fetch_title,
+    .window_fetch_parent = window_fetch_parent,
+    .window_fetch_output = window_fetch_output,
+    .window_activate = window_activate,
+};
+
 static void wsland_xwayland_new_surface(struct wl_listener *listener, void *data) {
-    wsland_server *server = wl_container_of(listener, server, events.xwayland_new_surface);
+    wsland_server *server = wl_container_of(listener, server, events.new_xwayland_toplevel);
 
     wsland_window *window = calloc(1, sizeof(*window));
+    window->handle = &wsland_xwayland_window_impl;
     window->server = server;
     window->xwayland = data;
     window->type = XWAYLAND;
@@ -106,30 +130,9 @@ static void wsland_xwayland_new_surface(struct wl_listener *listener, void *data
     wl_signal_add(&window->xwayland->events.destroy, &window->events.destroy);
 }
 
-static void server_window_activate(struct wsland_window *window, bool enabled) {
-    wlr_xwayland_surface_activate(window->xwayland, enabled);
-}
-
-static wsland_window* server_window_fetch_parent(struct wsland_window *window) {
-    if (window->xwayland->parent) {
-        return window->xwayland->parent->data;
-    }
-    return NULL;
-}
-
-static char* server_window_fetch_title(wsland_window *window) {
-    return window->xwayland->title;
-}
-
-wsland_xwayland_handle wsland_xwayland_handle_impl = {
-    .new_surface = wsland_xwayland_new_surface,
-    .ready = wsland_xwayland_ready,
-
-    .server_window_activate = server_window_activate,
-    .server_window_fetch_parent = server_window_fetch_parent,
-    .server_window_fetch_title = server_window_fetch_title,
-};
-
-wsland_xwayland_handle* wsland_xwayland_handle_init(wsland_server *server) {
-    return &wsland_xwayland_handle_impl;
+void xwayland_event_init(wsland_server *server) {
+    server->events.xwayland_ready.notify = wsland_xwayland_ready;
+    wl_signal_add(&server->xwayland->events.ready, &server->events.xwayland_ready);
+    server->events.new_xwayland_toplevel.notify = wsland_xwayland_new_surface;
+    wl_signal_add(&server->xwayland->events.new_surface, &server->events.new_xwayland_toplevel);
 }

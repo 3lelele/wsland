@@ -325,7 +325,15 @@ static void rail_client_sysparam(wsland_peer *peer, const RAIL_SYSPARAM_ORDER *a
 }
 
 static void rdpgfx_frame_acknowledge(wsland_peer *peer) {
-    wsland_adapter_frame_for_peer(peer);
+    wsland_frame_buffer *frame_buffer, *temp;
+    wl_list_for_each_safe(frame_buffer, temp, &peer->freerdp->adapter->buffers, link) {
+        if (frame_buffer->frame_id <= peer->acknowledged_frame_id) {
+            wl_list_remove(&frame_buffer->link);
+            free(frame_buffer->alpha);
+            free(frame_buffer->ptr);
+            free(frame_buffer);
+        }
+    }
 }
 
 wsland_peer_handle wsland_peer_handle_impl = {

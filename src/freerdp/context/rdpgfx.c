@@ -109,7 +109,7 @@ static UINT rdpgfx_client_frame_acknowledge(RdpgfxServerContext *context, const 
     );*/
 
     peer->acknowledged_frame_id = frameAcknowledge->frameId;
-    peer->is_acknowledged_suspended = false;
+    peer->handle->rdpgfx_frame_acknowledge(peer);
     return CHANNEL_RC_OK;
 }
 

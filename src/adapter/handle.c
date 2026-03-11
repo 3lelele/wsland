@@ -1,5 +1,8 @@
 // ReSharper disable All
+#define _DEFAULT_SOURCE
+
 #include <assert.h>
+#include <unistd.h>
 #include <drm/drm_fourcc.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/drm_format_set.h>
@@ -289,7 +292,7 @@ static void wsland_window_update(struct detection_data *data) {
         map_surface_to_window.mappedHeight = data->window->current.height;
         map_surface_to_window.targetWidth = data->window->current.width;
         map_surface_to_window.targetHeight = data->window->current.height;
-        if (gfx_ctx->MapSurfaceToScaledWindow(gfx_ctx, &map_surface_to_window)) {
+        if (gfx_ctx->MapSurfaceToScaledWindow(gfx_ctx, &map_surface_to_window) == 0) {
             data->window->scale_w = 100;
             data->window->scale_h = 100;
         }
@@ -308,17 +311,11 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
     if (!window->window_id) {
         window->window_id = ++wsland_window_id;
 
-        wsland_window *parent;
-        switch (window->type) {
-            case WAYLAND:
-                parent = window->server->handle->server_window_fetch_parent(window);
-                break;
-            case XWAYLAND:
-                parent = window->server->xhandle->server_window_fetch_parent(window);
-                break;
-        }
-        if (parent) {
-            window->parent_id = parent->window_id;
+        if (window->handle) {
+            wsland_window *parent = window->handle->window_fetch_parent(window);
+            if (parent) {
+                window->parent_id = parent->window_id;
+            }
         }
         data.create = true;
     }
@@ -354,16 +351,8 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
         data.update = true;
     }
 
-    {
-        char *title;
-        switch (window->type) {
-            case WAYLAND:
-                title = window->server->handle->server_window_fetch_title(window);
-                break;
-            case XWAYLAND:
-                title = window->server->xhandle->server_window_fetch_title(window);
-                break;
-        }
+    if (window->handle) {
+        char *title = window->handle->window_fetch_title(window);
 
         if (title) {
             if (!window->title || strcmp(window->title, title) != 0) {
@@ -514,8 +503,12 @@ static void wsland_window_destroy(struct wl_listener *listener, void *data) {
 destroy_window_data:
     if (window->window_id) {
         pixman_region32_fini(&window->damage);
-        wlr_buffer_drop(window->buffer);
-        free(window->title);
+        if (window->buffer) {
+            wlr_buffer_drop(window->buffer);
+        }
+        if (window->title) {
+            free(window->title);
+        }
     }
 }
 
@@ -608,6 +601,9 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
         if (!adapter->freerdp->peer || !(adapter->freerdp->peer->flags & WSLAND_PEER_OUTPUT_ENABLED)) {
             return;
         }
+        if (adapter->freerdp->peer->current_frame_id - adapter->freerdp->peer->acknowledged_frame_id >= 2) {
+            return;
+        }
     }
     RdpgfxServerContext *gfx_ctx = adapter->freerdp->peer->ctx_server_rdpgfx;
 
@@ -626,16 +622,7 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
         }
     }
 
-    bool can_render = true;
-    {
-        if (output->server->move.mode == WSLAND_CURSOR_MOVE) {
-            can_render = false;
-        }
-    }
-
-    if (render_nodes.size > 0 && can_render) {
-        adapter->freerdp->peer->is_acknowledged_suspended = true;
-
+    if (render_nodes.size > 0 && output->server->move.mode != WSLAND_CURSOR_MOVE) {
         int frame_id = ++adapter->freerdp->peer->current_frame_id;
 
         RDPGFX_START_FRAME_PDU start_frame = { .frameId = frame_id };
@@ -652,11 +639,18 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
                 pixman_region32_t damage;
                 pixman_region32_init(&damage);
                 pixman_region32_copy(&damage, &node->window->damage);
-                // pixman_region32_intersect(&damage, &damage, &window->damage);
+                // pixman_region32_intersect(&damage, &damage, &output->pending_commit_damage);
                 pixman_region32_translate(&damage, -node->window->current.x, -node->window->current.y);
                 pixman_region32_fini(&node->window->damage);
 
                 if (pixman_region32_not_empty(&damage)) {
+                    wsland_log(ADAPTER, ERROR, "app damage: %d, %d, %d, %d",
+                        damage.extents.x1,
+                        damage.extents.y1,
+                        damage.extents.x2 - damage.extents.x1,
+                        damage.extents.y2 - damage.extents.y1
+                    );
+
                     int buffer_bpp = 4; /* Bytes Per Pixel. */
                     int width = damage.extents.x2 - damage.extents.x1;
                     int height = damage.extents.y2 - damage.extents.y1;
@@ -748,8 +742,12 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
                         surface_command.length = damage_size;
                         surface_command.data = &data[0];
                         gfx_ctx->SurfaceCommand(gfx_ctx, &surface_command);
-                        free(alpha);
-                        free(ptr);
+
+                        wsland_frame_buffer *frame_buffer = calloc(1, sizeof(*frame_buffer));
+                        frame_buffer->frame_id = frame_id;
+                        frame_buffer->alpha = alpha;
+                        frame_buffer->ptr = ptr;
+                        wl_list_insert(&adapter->buffers, &frame_buffer->link);
                     }
                 }
                 pixman_region32_fini(&damage);

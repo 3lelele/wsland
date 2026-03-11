@@ -15,13 +15,6 @@
 #include "wsland/utils/log.h"
 
 
-void wsland_adapter_frame_for_peer(wsland_peer *peer) {
-    wsland_output *output;
-    wl_list_for_each(output, &peer->freerdp->adapter->server->outputs, server_link) {
-        wlr_output_schedule_frame(&output->output);
-    }
-}
-
 void wsland_adapter_activate_for_peer(wsland_peer *peer, uint32_t window_id, bool enabled) {
     wsland_server *server = peer->freerdp->adapter->server;
 
@@ -34,14 +27,7 @@ void wsland_adapter_activate_for_peer(wsland_peer *peer, uint32_t window_id, boo
                 wlr_scene_node_lower_to_bottom(&window->tree->node);
             }
 
-            switch (window->type) {
-                case WAYLAND:
-                    server->handle->server_window_activate(window, enabled);
-                    break;
-                case XWAYLAND:
-                    server->xhandle->server_window_activate(window, enabled);
-                    break;
-            }
+            if (window->handle) { window->handle->window_activate(window, enabled); }
         }
     }
 }
@@ -142,6 +128,8 @@ wsland_adapter* wsland_adapter_create(wsland_server *server) {
         adapter->events.wsland_window_frame.notify = adapter->handle->wsland_window_frame;
         wl_signal_add(&server->events.wsland_window_frame, &adapter->events.wsland_window_frame);
     }
+
+    wl_list_init(&adapter->buffers);
     return adapter;
 
 create_failed:
