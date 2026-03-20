@@ -4,24 +4,17 @@
 #include "wsland/server.h"
 #include "wsland/freerdp.h"
 
+#define RAIL_MARKER_WINDOW_ID  0xFFFFFFFE
+#define RAIL_DESKTOP_WINDOW_ID 0xFFFFFFFF
 
 enum adapter_type {
-    WAYLAND, XWAYLAND
+    TOPLEVEL, POPUP, XWAYLAND
 };
-
-typedef struct wsland_frame_buffer {
-    uint32_t frame_id;
-    void *alpha;
-    void *ptr;
-
-    struct wl_list link;
-} wsland_frame_buffer;
 
 typedef struct wsland_window {
     enum adapter_type type;
     struct wlr_scene_tree *tree;
-    struct wlr_swapchain *swapchain;
-    struct wlr_scene_surface *surface;
+    struct wsland_window *parent;
 
     uint32_t window_id;
     uint32_t parent_id;
@@ -31,8 +24,13 @@ typedef struct wsland_window {
     int scale_w, scale_h;
     char *title;
 
+    struct wlr_box damage;
+    struct wlr_buffer *buffer;
+    uint32_t resize_serial;
+    bool buffer_opaque;
+
     union {
-        struct wlr_xdg_toplevel *wayland;
+        struct wlr_xdg_surface *wayland;
         struct wlr_xwayland_surface *xwayland;
     };
 
@@ -41,8 +39,9 @@ typedef struct wsland_window {
         struct wl_listener unmap;
         struct wl_listener commit;
         struct wl_listener destroy;
-        struct wl_listener associate; // for xwayland
-        struct wl_listener dissociate; // for xwayland
+        struct wl_listener associate;
+        struct wl_listener dissociate;
+        struct wl_listener new_popup;
 
         struct wl_listener request_move;
         struct wl_listener request_resize;
@@ -69,6 +68,8 @@ typedef struct wsland_cursor {
 } wsland_cursor;
 
 
+void wsland_adapter_frame_for_peer(wsland_peer *peer, RDPGFX_FRAME_ACKNOWLEDGE_PDU frame_acknowledge);
+
 void wsland_adapter_work_area_for_peer(wsland_peer *peer, struct wlr_box area);
 void wsland_adapter_taskbar_area_for_peer(wsland_peer *peer, struct wlr_box area);
 void wsland_adapter_create_keyboard_for_peer(wsland_peer *peer, rdpSettings *settings);
@@ -84,7 +85,6 @@ typedef struct wsland_adapter_handle {
 } wsland_adapter_handle;
 
 typedef struct wsland_adapter {
-    struct wl_list buffers;
 
     struct {
         struct wl_listener wsland_window_motion;

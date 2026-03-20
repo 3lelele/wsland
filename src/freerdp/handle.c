@@ -447,17 +447,7 @@ static void rdpgfx_frame_acknowledge(bool free_only, void *user_data) {
     dispatch_data *data = wl_container_of(user_data, data, task);
 
     if (!free_only) {
-        data->peer->acknowledged_frame_id = data->frame_acknowledge.frameId;
-
-        wsland_frame_buffer *frame_buffer, *temp;
-        wl_list_for_each_safe(frame_buffer, temp, &data->peer->freerdp->adapter->buffers, link) {
-            if (frame_buffer->frame_id <= data->peer->acknowledged_frame_id) {
-                wl_list_remove(&frame_buffer->link);
-                free(frame_buffer->alpha);
-                free(frame_buffer->ptr);
-                free(frame_buffer);
-            }
-        }
+        wsland_adapter_frame_for_peer(data->peer, data->frame_acknowledge);
     }
 
     free(data);

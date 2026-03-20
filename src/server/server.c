@@ -19,6 +19,11 @@
 #include <wlr/xwayland/xwayland.h>
 
 #include "wsland/server.h"
+
+#include "wlr/types/wlr_output_management_v1.h"
+#include "wlr/types/wlr_pointer_constraints_v1.h"
+#include "wlr/types/wlr_relative_pointer_v1.h"
+#include "wlr/types/wlr_xdg_output_v1.h"
 #include "wsland/utils/log.h"
 
 const struct wlr_pointer_impl wsland_pointer_impl = {
@@ -98,6 +103,18 @@ wsland_server *wsland_server_create(wsland_config *config) {
         goto create_failed;
     }
 
+    server->xdg_output_manager_v1 = wlr_xdg_output_manager_v1_create(server->display, server->output_layout);
+    if (!server->xdg_output_manager_v1) {
+        wsland_log(SERVER, ERROR,  "failed to invoke wlr_xdg_output_manager_v1_create");
+        goto create_failed;
+    }
+
+    server->output_manager_v1 = wlr_output_manager_v1_create(server->display);
+    if (!server->output_manager_v1) {
+        wsland_log(SERVER, ERROR,  "failed to invoke wlr_output_manager_v1_create");
+        goto create_failed;
+    }
+
     server->scene = wlr_scene_create();
     if (!server->scene) {
         wsland_log(SERVER, ERROR,  "failed to invoke wlr_scene_create");
@@ -113,6 +130,18 @@ wsland_server *wsland_server_create(wsland_config *config) {
     server->xdg_shell = wlr_xdg_shell_create(server->display, 3);
     if (!server->xdg_shell) {
         wsland_log(SERVER, ERROR,  "failed to invoke wlr_xdg_shell_create");
+        goto create_failed;
+    }
+
+    server->pointer_constraints = wlr_pointer_constraints_v1_create(server->display);
+    if (!server->pointer_constraints) {
+        wsland_log(SERVER, ERROR,  "failed to invoke wlr_pointer_constraints_v1_create");
+        goto create_failed;
+    }
+
+    server->relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server->display);
+    if (!server->relative_pointer_manager) {
+        wsland_log(SERVER, ERROR,  "failed to invoke wlr_relative_pointer_manager_v1_create");
         goto create_failed;
     }
 
@@ -169,9 +198,6 @@ wsland_server *wsland_server_create(wsland_config *config) {
         LISTEN(&server->backend->events.new_output, &server->events.new_output, server->handle->new_output);
         LISTEN(&server->backend->events.new_input, &server->events.new_input, server->handle->new_input);
 
-        // compositor event
-        LISTEN(&server->compositor->events.new_surface, &server->events.new_surface, server->handle->new_surface);
-
         // cursor config
         server->move.mode = WSLAND_CURSOR_PASSTHROUGH;
         wlr_cursor_attach_output_layout(server->cursor, server->output_layout);
@@ -208,11 +234,11 @@ wsland_server *wsland_server_create(wsland_config *config) {
     wl_list_init(&server->outputs);
     wl_list_init(&server->windows);
     wl_list_init(&server->keyboards);
-    wl_signal_init(&server->events.wsland_window_motion);
-    wl_signal_init(&server->events.wsland_window_destroy);
 
     wl_signal_init(&server->events.wsland_cursor_frame);
     wl_signal_init(&server->events.wsland_window_frame);
+    wl_signal_init(&server->events.wsland_window_motion);
+    wl_signal_init(&server->events.wsland_window_destroy);
     return server;
 create_failed:
     return NULL;
@@ -227,16 +253,14 @@ void wsland_server_running(wsland_server *server) {
 
 void wsland_server_destroy(wsland_server *server) {
     if (server) {
-        assert(wl_list_empty(&server->events.wsland_window_motion.listener_list));
-        assert(wl_list_empty(&server->events.wsland_window_destroy.listener_list));
-
         assert(wl_list_empty(&server->events.wsland_cursor_frame.listener_list));
         assert(wl_list_empty(&server->events.wsland_window_frame.listener_list));
+        assert(wl_list_empty(&server->events.wsland_window_motion.listener_list));
+        assert(wl_list_empty(&server->events.wsland_window_destroy.listener_list));
 
         wl_display_destroy_clients(server->display);
 
         wl_list_remove(&server->events.wayland_new_toplevel.link);
-        wl_list_remove(&server->events.wayland_new_popup.link);
 
         wl_list_remove(&server->events.cursor_motion.link);
         wl_list_remove(&server->events.cursor_motion_absolute.link);
@@ -244,7 +268,6 @@ void wsland_server_destroy(wsland_server *server) {
         wl_list_remove(&server->events.cursor_axis.link);
         wl_list_remove(&server->events.cursor_frame.link);
 
-        wl_list_remove(&server->events.new_surface.link);
         wl_list_remove(&server->events.new_output.link);
         wl_list_remove(&server->events.new_input.link);
         wl_list_remove(&server->events.request_cursor.link);

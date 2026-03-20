@@ -11,42 +11,37 @@
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_xcursor_manager.h>
+#include <wlr/types/wlr_subcompositor.h>
 
 #include "wsland/server.h"
 #include "wsland/adapter.h"
 #include "wsland/utils/log.h"
 
 
-typedef struct wsland_popup {
-    struct wlr_xdg_popup *popup;
-
-    struct {
-        struct wl_listener map;
-        struct wl_listener commit;
-        struct wl_listener destroy;
-    } events;
-} wsland_popup;
-
-static char* window_fetch_title(wsland_window *window) {
-    return window->wayland->title;
-}
-
-static wsland_window *window_fetch_parent(wsland_window *window) {
-    if (window->wayland->parent) {
-        struct wlr_scene_tree *parent_tree = window->wayland->parent->base->data;
-        if (parent_tree) {
-            return parent_tree->node.data;
-        }
+static char* fetch_title(wsland_window *window) {
+    if (window->type == TOPLEVEL) {
+        return window->wayland->toplevel->title;
     }
     return NULL;
 }
 
-static wsland_output *window_fetch_output(wsland_window *window) {
+static wsland_window *fetch_parent(wsland_window *window) {
+    if (window->type == TOPLEVEL && window->wayland->toplevel->parent) {
+        struct wlr_scene_tree *parent_tree = window->wayland->toplevel->parent->base->data;
+        if (parent_tree) { return parent_tree->node.data; }
+    } else if (window->type == POPUP) {
+        return window->parent;
+    }
+
+    return NULL;
+}
+
+static wsland_output *fetch_output(wsland_window *window) {
     int pos_x = MAX(0, window->tree->node.x);
     int pos_y = MAX(0, window->tree->node.y);
 
-    if (window->wayland->parent) {
-        struct wlr_scene_tree *parent_tree = window->wayland->parent->base->data;
+    if (window->wayland->toplevel->parent) {
+        struct wlr_scene_tree *parent_tree = window->wayland->toplevel->parent->base->data;
         pos_x = MAX(0, window->tree->node.x);
         pos_y = MAX(0, window->tree->node.y);
     }
@@ -60,23 +55,46 @@ static wsland_output *window_fetch_output(wsland_window *window) {
     return NULL;
 }
 
-static struct wlr_surface *window_fetch_surface(wsland_window *window) {
-    return window->wayland->base->surface;
+static struct wlr_surface *fetch_surface(wsland_window *window) {
+    return window->wayland->surface;
 }
 
-static struct wlr_box *window_fetch_geometry(wsland_window *window) {
-    return &window->wayland->base->current.geometry;
+static struct wlr_box *fetch_geometry(wsland_window *window) {
+    return &window->wayland->toplevel->base->current.geometry;
 }
 
 static void window_resize(wsland_window *window, int width, int height) {
-    wlr_xdg_toplevel_set_size(window->wayland, width, height);
+    if (window->type != TOPLEVEL) {
+        return;
+    }
+
+    window->resize_serial = wlr_xdg_toplevel_set_size(window->wayland->toplevel, width, height);
+}
+
+static void window_title_detection(wsland_window *window) {
+    if (window->type != TOPLEVEL) {
+        return;
+    }
+
+    window->title = window->wayland->toplevel->title;
+}
+
+static void window_parent_detection(wsland_window *window) {
+    if (window->wayland->toplevel->parent && window->wayland->toplevel->parent->base->data) {
+        wsland_window *parent = window->wayland->toplevel->parent->base->data;
+        window->parent_id = parent->window_id;
+    }
 }
 
 static void window_center(wsland_window *window) {
-    wsland_output *output = window_fetch_output(window);
-    if (output) {
-        struct wlr_box bounds = {0};
-        wlr_surface_get_extends(window->wayland->base->surface, &bounds);
+    if (window->type != TOPLEVEL) {
+        return;
+    }
+
+    wsland_output *output;
+    if ((output = fetch_output(window)) != NULL) {
+        struct wlr_box bounds;
+        wlr_surface_get_extents(window->wayland->surface, &bounds);
 
         int pos_x = output->work_area.x + (output->work_area.width - bounds.width) / 2;
         int pos_y = output->work_area.y + (output->work_area.height - bounds.height) / 2;
@@ -84,8 +102,16 @@ static void window_center(wsland_window *window) {
     }
 }
 
+static void window_motion(wsland_window *window, int pos_x, int pos_y) {
+    wlr_scene_node_set_position(&window->tree->node, pos_x, pos_y);
+}
+
 static void window_activate(wsland_window *window, bool enabled) {
-    wlr_xdg_toplevel_set_activated(window->wayland, enabled);
+    if (window->type != TOPLEVEL) {
+        return;
+    }
+
+    wlr_xdg_toplevel_set_activated(window->wayland->toplevel, enabled);
 
     if (!enabled) {
         wlr_seat_keyboard_notify_clear_focus(window->server->seat);
@@ -93,37 +119,45 @@ static void window_activate(wsland_window *window, bool enabled) {
 }
 
 static void window_maximize(wsland_window *window) {
-    if (window->wayland->base->surface->mapped) {
-        wsland_output *output = window_fetch_output(window);
+    if (window->type != TOPLEVEL) {
+        return;
+    }
+
+    if (window->wayland->toplevel->base->surface->mapped) {
+        wsland_output *output = fetch_output(window);
 
         if (output) {
-            if (window->wayland->current.maximized) {
+            if (window->wayland->toplevel->current.maximized) {
                 if (wlr_box_empty(&window->before)) {
                     window->before.width = output->work_area.width / 2;
                     window->before.height = output->work_area.height / 2;
                 }
 
                 wlr_scene_node_set_position(&window->tree->node, window->before.x, window->before.y);
-                wlr_xdg_toplevel_set_size(window->wayland, window->before.width, window->before.height);
+                wlr_xdg_toplevel_set_size(window->wayland->toplevel, window->before.width, window->before.height);
             } else {
                 window->before = (struct wlr_box){
                     window->tree->node.x,
                     window->tree->node.y,
-                    window->wayland->base->current.geometry.width,
-                    window->wayland->base->current.geometry.height,
+                    window->wayland->toplevel->base->current.geometry.width,
+                    window->wayland->toplevel->base->current.geometry.height,
                 };
 
                 wlr_scene_node_set_position(&window->tree->node, output->work_area.x, output->work_area.y);
-                wlr_xdg_toplevel_set_size(window->wayland, output->work_area.width, output->work_area.height);
+                wlr_xdg_toplevel_set_size(window->wayland->toplevel, output->work_area.width, output->work_area.height);
             }
-            wlr_xdg_toplevel_set_maximized(window->wayland, !window->wayland->current.maximized);
+            wlr_xdg_toplevel_set_maximized(window->wayland->toplevel, !window->wayland->toplevel->current.maximized);
         }
-        wlr_xdg_surface_schedule_configure(window->wayland->base);
+        wlr_xdg_surface_schedule_configure(window->wayland->toplevel->base);
     }
 }
 
 static void window_shutdown(wsland_window *window) {
-    wlr_xdg_toplevel_send_close(window->wayland);
+    if (window->type != TOPLEVEL) {
+        return;
+    }
+
+    wlr_xdg_toplevel_send_close(window->wayland->toplevel);
 }
 
 static void surface_activate(struct wlr_surface *surface, bool enabled) {
@@ -135,42 +169,50 @@ static void surface_activate(struct wlr_surface *surface, bool enabled) {
 }
 
 static bool window_grab_cannot(wsland_window *window) {
-    return window->wayland->current.maximized || window->wayland->current.fullscreen;
+    if (window->type != TOPLEVEL) {
+        return true;
+    }
+
+    return window->wayland->toplevel->current.maximized || window->wayland->toplevel->current.fullscreen;
+}
+
+static bool window_click_cannot(wsland_window *window) {
+    return window->type == POPUP;
+}
+
+static bool window_resize_cannot(wsland_window *window) {
+    if (window->resize_serial && window->resize_serial != window->wayland->pending.configure_serial) {
+        return true;
+    }
+    return false;
 }
 
 static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
     wsland_window *window = wl_container_of(listener, window, events.map);
-    wl_list_insert(&window->server->windows, &window->server_link);
-    window->server->handle->dispatch_window_focus(window);
-
+    window->parent = window->handle->fetch_parent(window);
+    window->wayland->surface->data = window;
     window_center(window);
 
-    if (window->wayland->parent) {
-        wsland_window *parent = window->handle->window_fetch_parent(window);
-
-        if (parent) {
-            wl_list_insert(&parent->children, &window->parent_link);
-        }
+    if (window->parent) {
+        wl_list_insert(&window->parent->children, &window->parent_link);
     }
+    wl_list_insert(&window->server->windows, &window->server_link);
 }
 
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
     wsland_window *window = wl_container_of(listener, window, events.unmap);
 
-    if (window == window->server->grab.window) {
-        window->server->handle->reset_server_cursor(window->server);
-    }
-
-    wl_signal_emit(&window->server->events.wsland_window_destroy, window);
     wl_list_remove(&window->parent_link);
     wl_list_remove(&window->server_link);
+    wlr_scene_node_destroy(&window->tree->node);
+    wl_signal_emit(&window->server->events.wsland_window_destroy, window);
 }
 
 static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
     wsland_window *window = wl_container_of(listener, window, events.commit);
 
-    if (window->wayland->base->initial_commit) {
-        wlr_xdg_toplevel_set_size(window->wayland, 0, 0);
+    if (window->wayland->initial_commit) {
+        wlr_xdg_toplevel_set_size(window->wayland->toplevel, 0, 0);
     }
 }
 
@@ -181,11 +223,12 @@ static void xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
     wl_list_remove(&window->events.map.link);
     wl_list_remove(&window->events.unmap.link);
     wl_list_remove(&window->events.commit.link);
-    wl_list_remove(&window->events.destroy.link);
+    wl_list_remove(&window->events.new_popup.link);
     wl_list_remove(&window->events.request_move.link);
     wl_list_remove(&window->events.request_resize.link);
     wl_list_remove(&window->events.request_maximize.link);
     wl_list_remove(&window->events.request_fullscreen.link);
+    wl_list_remove(&window->events.destroy.link);
     wl_list_remove(&window->children);
     free(window);
 }
@@ -213,125 +256,150 @@ static void xdg_toplevel_request_maximize(struct wl_listener *listener, void *da
 static void xdg_toplevel_request_fullscreen(struct wl_listener *listener, void *data) {
     wsland_window *window = wl_container_of(listener, window, events.request_fullscreen);
 
-    if (window->wayland->base->surface->mapped) {
-        wsland_output *output = window_fetch_output(window);
+    if (window->wayland->surface->mapped) {
+        wsland_output *output = fetch_output(window);
 
         if (output) {
-            if (window->wayland->current.fullscreen) {
+            if (window->wayland->toplevel->current.fullscreen) {
                 wlr_scene_node_set_position(&window->tree->node, window->before.x, window->before.y);
-                wlr_xdg_toplevel_set_size(window->wayland, window->before.width, window->before.height);
+                wlr_xdg_toplevel_set_size(window->wayland->toplevel, window->before.width, window->before.height);
             } else {
                 window->before = (struct wlr_box){
                     window->tree->node.x,
                     window->tree->node.y,
-                    window->wayland->base->current.geometry.width,
-                    window->wayland->base->current.geometry.height,
+                    window->wayland->current.geometry.width,
+                    window->wayland->current.geometry.height,
                 };
 
                 wlr_scene_node_set_position(&window->tree->node, output->monitor.x, output->monitor.y);
-                wlr_xdg_toplevel_set_size(window->wayland, output->monitor.width, output->monitor.height);
+                wlr_xdg_toplevel_set_size(window->wayland->toplevel, output->monitor.width, output->monitor.height);
             }
-            wlr_xdg_toplevel_set_fullscreen(window->wayland, !window->wayland->current.fullscreen);
+            wlr_xdg_toplevel_set_fullscreen(window->wayland->toplevel, !window->wayland->toplevel->current.fullscreen);
         }
-        wlr_xdg_surface_schedule_configure(window->wayland->base);
+        wlr_xdg_surface_schedule_configure(window->wayland);
     }
 }
 
-wsland_window_handle wsland_wayland_window_impl = {
-    .window_fetch_title = window_fetch_title,
-    .window_fetch_parent = window_fetch_parent,
-    .window_fetch_output = window_fetch_output,
-    .window_fetch_surface = window_fetch_surface,
-    .window_fetch_geometry = window_fetch_geometry,
+static void popup_map(struct wl_listener *listener, void *data) {
+    wsland_window *popup = wl_container_of(listener, popup, events.map);
+    popup->wayland->surface->data = popup;
 
+    wsland_output *output = popup->handle->fetch_output(popup);
+    if (output) {
+        wlr_xdg_popup_unconstrain_from_box(popup->wayland->popup, &output->work_area);
+    }
+    wl_list_insert(&popup->server->windows, &popup->server_link);
+}
+
+static void xdg_popup_commit(struct wl_listener *listener, void *data) {
+    wsland_window *popup = wl_container_of(listener, popup, events.commit);
+
+    if (popup->wayland->initial_commit) {
+        wlr_xdg_surface_schedule_configure(popup->wayland);
+    } else if (popup->wayland->surface->mapped) {
+        int pos_x = popup->parent->tree->node.x + popup->wayland->popup->current.geometry.x;
+        int pos_y = popup->parent->tree->node.y + popup->wayland->popup->current.geometry.y;
+        wlr_scene_node_set_position(&popup->tree->node, pos_x, pos_y);
+    }
+}
+
+static void popup_unmap(struct wl_listener *listener, void *data) {
+    wsland_window *popup = wl_container_of(listener, popup, events.unmap);
+
+    wl_list_remove(&popup->parent_link);
+    wl_list_remove(&popup->server_link);
+    wlr_scene_node_destroy(&popup->tree->node);
+}
+
+static void xdg_popup_destroy(struct wl_listener *listener, void *data) {
+    wsland_window *popup = wl_container_of(listener, popup, events.destroy);
+
+    wl_signal_emit(&popup->server->events.wsland_window_destroy, popup);
+    wl_list_remove(&popup->events.map.link);
+    wl_list_remove(&popup->events.unmap.link);
+    wl_list_remove(&popup->events.commit.link);
+    wl_list_remove(&popup->events.new_popup.link);
+    wl_list_remove(&popup->events.destroy.link);
+    free(popup);
+}
+
+wsland_window_handle wsland_wayland_window_impl = {
+    .fetch_title = fetch_title,
+    .fetch_parent = fetch_parent,
+    .fetch_output = fetch_output,
+    .fetch_surface = fetch_surface,
+    .fetch_geometry = fetch_geometry,
 
     .window_resize = window_resize,
     .window_center = window_center,
+    .window_motion = window_motion,
     .window_activate = window_activate,
     .window_maximize = window_maximize,
     .window_shutdown = window_shutdown,
     .surface_activate = surface_activate,
     .window_grab_cannot = window_grab_cannot,
+    .window_click_cannot = window_click_cannot,
+    .window_resize_cannot = window_resize_cannot,
 };
 
-static void wayland_new_toplevel(struct wl_listener *listener, void *data) {
-    wsland_server *server = wl_container_of(listener, server, events.wayland_new_toplevel);
-    struct wlr_xdg_toplevel *xdg_toplevel = data;
+static void window_new_popup(struct wl_listener *listener, void *data) {
+    wsland_window *parent = wl_container_of(listener, parent, events.new_popup);
+    struct wlr_xdg_popup *popup = data;
 
     wsland_window *window = calloc(1, sizeof(*window));
     window->handle = &wsland_wayland_window_impl;
-    window->wayland = xdg_toplevel;
-    window->server = server;
-    window->type = WAYLAND;
+    window->server = parent->server;
+    window->wayland = popup->base;
+    window->parent = parent;
+    window->type = POPUP;
 
-    window->tree = wlr_scene_xdg_surface_create(
-        &window->server->scene->tree, window->wayland->base
-    );
+    window->tree = wlr_scene_xdg_surface_create(&window->server->scene->tree, window->wayland);
+    window->wayland->data = window->tree;
     window->tree->node.data = window;
-    window->wayland->base->data = window->tree;
 
-    LISTEN(&window->wayland->base->surface->events.map, &window->events.map, xdg_toplevel_map);
-    LISTEN(&window->wayland->base->surface->events.unmap, &window->events.unmap, xdg_toplevel_unmap);
-    LISTEN(&window->wayland->base->surface->events.commit, &window->events.commit, xdg_toplevel_commit);
-    LISTEN(&window->wayland->events.destroy, &window->events.destroy, xdg_toplevel_destroy);
+    LISTEN(&popup->base->surface->events.map, &window->events.map, popup_map);
+    LISTEN(&popup->base->surface->events.unmap, &window->events.unmap, popup_unmap);
+    LISTEN(&popup->base->surface->events.commit, &window->events.commit, xdg_popup_commit);
+    LISTEN(&popup->events.destroy, &window->events.destroy, xdg_popup_destroy);
 
-    LISTEN(&window->wayland->events.request_move, &window->events.request_move, xdg_toplevel_request_move);
-    LISTEN(&window->wayland->events.request_resize, &window->events.request_resize, xdg_toplevel_request_resize);
-    LISTEN(&window->wayland->events.request_maximize, &window->events.request_maximize, xdg_toplevel_request_maximize);
-    LISTEN(&window->wayland->events.request_fullscreen, &window->events.request_fullscreen, xdg_toplevel_request_fullscreen);
+    LISTEN(&popup->base->events.new_popup, &window->events.new_popup, window_new_popup);
 
     wl_list_init(&window->server_link);
     wl_list_init(&window->parent_link);
     wl_list_init(&window->children);
 }
 
-static void xdg_popup_map(struct wl_listener *listener, void *data) {
-    wsland_popup *popup = wl_container_of(listener, popup, events.map);
+static void wayland_new_toplevel(struct wl_listener *listener, void *data) {
+    wsland_server *server = wl_container_of(listener, server, events.wayland_new_toplevel);
+    struct wlr_xdg_toplevel *toplevel = data;
 
-    struct wlr_box toplevel_space_box;
-    wlr_surface_get_extends(popup->popup->parent, &toplevel_space_box);
-    wlr_xdg_popup_unconstrain_from_box(popup->popup, &toplevel_space_box);
-}
+    wsland_window *window = calloc(1, sizeof(*window));
+    window->handle = &wsland_wayland_window_impl;
+    window->wayland = toplevel->base;
+    window->server = server;
+    window->type = TOPLEVEL;
 
-static void xdg_popup_commit(struct wl_listener *listener, void *data) {
-    wsland_popup *popup = wl_container_of(listener, popup, events.commit);
+    window->tree = wlr_scene_xdg_surface_create(&window->server->scene->tree, window->wayland);
+    window->wayland->data = window->tree;
+    window->tree->node.data = window;
 
-    if (popup->popup->base->initial_commit) {
-        wlr_xdg_surface_schedule_configure(popup->popup->base);
-    }
-}
+    LISTEN(&toplevel->base->surface->events.map, &window->events.map, xdg_toplevel_map);
+    LISTEN(&toplevel->base->surface->events.unmap, &window->events.unmap, xdg_toplevel_unmap);
+    LISTEN(&toplevel->base->surface->events.commit, &window->events.commit, xdg_toplevel_commit);
+    LISTEN(&toplevel->events.destroy, &window->events.destroy, xdg_toplevel_destroy);
 
-static void xdg_popup_destroy(struct wl_listener *listener, void *data) {
-    wsland_popup *popup = wl_container_of(listener, popup, events.destroy);
+    LISTEN(&toplevel->events.request_move, &window->events.request_move, xdg_toplevel_request_move);
+    LISTEN(&toplevel->events.request_resize, &window->events.request_resize, xdg_toplevel_request_resize);
+    LISTEN(&toplevel->events.request_maximize, &window->events.request_maximize, xdg_toplevel_request_maximize);
+    LISTEN(&toplevel->events.request_fullscreen, &window->events.request_fullscreen, xdg_toplevel_request_fullscreen);
 
-    wl_list_remove(&popup->events.map.link);
-    wl_list_remove(&popup->events.commit.link);
-    wl_list_remove(&popup->events.destroy.link);
-    free(popup);
-}
+    LISTEN(&toplevel->base->events.new_popup, &window->events.new_popup, window_new_popup);
 
-static void wayland_new_popup(struct wl_listener *listener, void *data) {
-    wsland_server *server = wl_container_of(listener, server, events.wayland_new_popup);
-
-    wsland_popup *popup = calloc(1, sizeof(*popup));
-    if (!popup) {
-        wsland_log(SERVER, ERROR, "failed to allocate wsland_popup");
-        return;
-    }
-
-    popup->popup = data;
-
-    struct wlr_xdg_surface *parent = wlr_xdg_surface_try_from_wlr_surface(popup->popup->parent);
-    assert(parent != NULL);
-    struct wlr_scene_tree *parent_tree = parent->data;
-    popup->popup->base->data = wlr_scene_xdg_surface_create(parent_tree, popup->popup->base);
-
-    LISTEN(&popup->popup->base->surface->events.map, &popup->events.map, xdg_popup_map);
-    LISTEN(&popup->popup->base->surface->events.commit, &popup->events.commit, xdg_popup_commit);
-    LISTEN(&popup->popup->events.destroy, &popup->events.destroy, xdg_popup_destroy);
+    wl_list_init(&window->server_link);
+    wl_list_init(&window->parent_link);
+    wl_list_init(&window->children);
 }
 
 void wayland_event_init(wsland_server *server) {
     LISTEN(&server->xdg_shell->events.new_toplevel, &server->events.wayland_new_toplevel, wayland_new_toplevel);
-    LISTEN(&server->xdg_shell->events.new_popup, &server->events.wayland_new_popup, wayland_new_popup);
 }

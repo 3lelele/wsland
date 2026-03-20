@@ -11,43 +11,26 @@
 #include "wsland/utils/log.h"
 
 
-typedef struct wsland_unmanaged {
-    struct wlr_xwayland_surface *xwayland;
-    struct wlr_scene_tree *tree;
-
-    struct {
-        struct wl_listener map;
-        struct wl_listener unmap;
-        struct wl_listener associate;
-        struct wl_listener dissociate;
-        struct wl_listener request_configure;
-        struct wl_listener set_parent;
-        struct wl_listener destroy;
-    } events;
-
-    wsland_server *server;
-} wsland_unmanaged;
-
-static char* window_fetch_title(wsland_window *window) {
+static char* fetch_title(wsland_window *window) {
     return window->xwayland->title;
 }
 
-static wsland_window* window_fetch_parent(wsland_window *window) {
-    if (window->xwayland->parent) {
+static wsland_window* fetch_parent(wsland_window *window) {
+    if ((window->type == XWAYLAND || window->type == POPUP) && window->xwayland->parent) {
         return window->xwayland->parent->data;
     }
     return NULL;
 }
 
-static wsland_output *window_fetch_output(wsland_window *window) {
+static wsland_output *fetch_output(wsland_window *window) {
     int pos_x = MAX(1, window->tree->node.x);
     int pos_y = MAX(1, window->tree->node.y);
 
     if (window->xwayland->parent) {
         wsland_window *parent = window->xwayland->parent->data;
         if (parent) {
-            pos_x = MAX(1, window->tree->node.x);
-            pos_y = MAX(1, window->tree->node.y);
+            pos_x = MAX(1, parent->tree->node.x);
+            pos_y = MAX(1, parent->tree->node.y);
         }
     }
 
@@ -60,11 +43,11 @@ static wsland_output *window_fetch_output(wsland_window *window) {
     return NULL;
 }
 
-static struct wlr_surface *window_fetch_surface(wsland_window *window) {
+static struct wlr_surface *fetch_surface(wsland_window *window) {
     return window->xwayland->surface;
 }
 
-static struct wlr_box *window_fetch_geometry(wsland_window *window) {
+static struct wlr_box *fetch_geometry(wsland_window *window) {
     return &(struct wlr_box) {
         window->xwayland->x, window->xwayland->y,
         window->xwayland->width, window->xwayland->height
@@ -79,15 +62,28 @@ static void window_resize(wsland_window *window, int width, int height) {
 }
 
 static void window_center(wsland_window *window) {
-    wsland_output *output = window_fetch_output(window);
+    wsland_output *output = fetch_output(window);
+
     if (output) {
         struct wlr_box bounds = {0};
-        wlr_surface_get_extends(window->xwayland->surface, &bounds);
+        wlr_surface_get_extents(window->xwayland->surface, &bounds);
 
         int pos_x = output->work_area.x + (output->work_area.width - bounds.width) / 2;
         int pos_y = output->work_area.y + (output->work_area.height - bounds.height) / 2;
+        wlr_xwayland_surface_configure(
+            window->xwayland, pos_x, pos_y, window->xwayland->width, window->xwayland->height
+        );
         wlr_scene_node_set_position(&window->tree->node, pos_x, pos_y);
     }
+}
+
+static void window_motion(wsland_window *window,  int pos_x, int pos_y) {
+    wlr_xwayland_surface_configure(
+        window->xwayland, pos_x, pos_y,
+        window->xwayland->width, window->xwayland->height
+    );
+
+    wlr_scene_node_set_position(&window->tree->node, pos_x, pos_y);
 }
 
 static void window_activate(wsland_window *window, bool enabled) {
@@ -100,7 +96,7 @@ static void window_activate(wsland_window *window, bool enabled) {
 
 static void window_maximize(wsland_window *window) {
     if (window->xwayland->surface->mapped) {
-        wsland_output *output = window_fetch_output(window);
+        wsland_output *output = fetch_output(window);
 
         if (output) {
             bool maximized = window->xwayland->maximized_horz && window->xwayland->maximized_vert;
@@ -123,7 +119,7 @@ static void window_maximize(wsland_window *window) {
                 wlr_scene_node_set_position(&window->tree->node, output->work_area.x, output->work_area.y);
                 wlr_xwayland_surface_configure(window->xwayland, output->work_area.x, output->work_area.y, output->work_area.width, output->work_area.height);
             }
-            wlr_xwayland_surface_set_maximized(window->xwayland, !maximized);
+            wlr_xwayland_surface_set_maximized(window->xwayland, !maximized, !maximized);
         }
     }
 }
@@ -144,113 +140,83 @@ static bool window_grab_cannot(wsland_window *window) {
     return (window->xwayland->maximized_horz && window->xwayland->maximized_vert) || window->xwayland->fullscreen || !window->xwayland->surface;
 }
 
-static wsland_window *find_parent(wsland_unmanaged *unmanaged) {
-    if (unmanaged->xwayland->parent) {
-        if (unmanaged->xwayland->parent->override_redirect) {
-            wsland_unmanaged *parent = unmanaged->xwayland->parent->data;
-            return find_parent(parent);
-        } else {
-            return unmanaged->xwayland->parent->data;
-        }
-    }
-    return NULL;
+static bool window_click_cannot(wsland_window *window) {
+    return window->type == POPUP;
+}
+
+static bool window_resize_cannot(wsland_window *window) {
+    return false;
 }
 
 static void unmanaged_map(struct wl_listener *listener, void *data) {
-    wsland_unmanaged *unmanaged = wl_container_of(listener, unmanaged, events.map);
+    wsland_window *unmanaged = wl_container_of(listener, unmanaged, events.map);
+    unmanaged->parent = unmanaged->handle->fetch_parent(unmanaged);
 
-    wsland_window *parent = find_parent(unmanaged);
+    unmanaged->tree = wlr_scene_subsurface_tree_create(&unmanaged->server->scene->tree, unmanaged->xwayland->surface);
+    unmanaged->tree->node.data = unmanaged->xwayland->surface->data = unmanaged;
 
-    if (!parent) {
-        struct wlr_surface *root_surface = unmanaged->server->seat->keyboard_state.focused_surface;
-        if (root_surface) {
-            struct wlr_xwayland_surface *xwayland_surface = wlr_xwayland_surface_try_from_wlr_surface(root_surface);
-            if (xwayland_surface && xwayland_surface->data) {
-                parent = xwayland_surface->data;
-            }
-        }
+    int pos_x = unmanaged->xwayland->x;
+    int pos_y = unmanaged->xwayland->y;
+    if (unmanaged->parent) {
+        pos_x += (unmanaged->parent->current.x - unmanaged->xwayland->parent->x);
+        pos_y += (unmanaged->parent->current.y - unmanaged->xwayland->parent->y);
     }
-
-    if (parent) {
-        unmanaged->tree = wlr_scene_subsurface_tree_create(
-            parent->tree, unmanaged->xwayland->surface
-        );
-
-        int pos_x = unmanaged->xwayland->x - parent->xwayland->x;
-        int pos_y = unmanaged->xwayland->y - parent->xwayland->y;
-        wlr_scene_node_set_position(&unmanaged->tree->node, pos_x, pos_y);
-    }
+    wlr_scene_node_set_position(&unmanaged->tree->node, pos_x, pos_y);
+    wl_list_insert(&unmanaged->server->windows, &unmanaged->server_link);
 }
 
 static void unmanaged_unmap(struct wl_listener *listener, void *data) {
-    wsland_unmanaged *unmanaged = wl_container_of(listener, unmanaged, events.unmap);
+    wsland_window *unmanaged = wl_container_of(listener, unmanaged, events.unmap);
 
     wlr_scene_node_destroy(&unmanaged->tree->node);
+    wl_list_remove(&unmanaged->parent_link);
+    wl_list_remove(&unmanaged->server_link);
 }
 
 static void unmanaged_associate(struct wl_listener *listener, void *data) {
-    wsland_unmanaged *unmanaged = wl_container_of(listener, unmanaged, events.associate);
+    wsland_window *unmanaged = wl_container_of(listener, unmanaged, events.associate);
 
     LISTEN(&unmanaged->xwayland->surface->events.map, &unmanaged->events.map, unmanaged_map);
     LISTEN(&unmanaged->xwayland->surface->events.unmap, &unmanaged->events.unmap, unmanaged_unmap);
 }
 
 static void unmanaged_dissociate(struct wl_listener *listener, void *data) {
-    wsland_unmanaged *unmanaged = wl_container_of(listener, unmanaged, events.dissociate);
+    wsland_window *unmanaged = wl_container_of(listener, unmanaged, events.dissociate);
 
     wl_list_remove(&unmanaged->events.map.link);
     wl_list_remove(&unmanaged->events.unmap.link);
 }
 
 static void unmanaged_request_configure(struct wl_listener *listener, void *data) {
-    wsland_unmanaged *unmanaged = wl_container_of(listener, unmanaged, events.request_configure);
+    wsland_window *unmanaged = wl_container_of(listener, unmanaged, events.request_configure);
     struct wlr_xwayland_surface_configure_event *event = data;
 
     wlr_xwayland_surface_configure(unmanaged->xwayland, event->x, event->y, event->width, event->height);
     wlr_scene_node_set_position(&unmanaged->tree->node, event->x, event->y);
 }
 
-static void unmanaged_set_parent(struct wl_listener *listener, void *data) {
-    wsland_unmanaged *unmanaged = wl_container_of(listener, unmanaged, events.set_parent);
-}
-
 static void unmanaged_destroy(struct wl_listener *listener, void *data) {
-    wsland_unmanaged *unmanaged = wl_container_of(listener, unmanaged, events.destroy);
+    wsland_window *unmanaged = wl_container_of(listener, unmanaged, events.destroy);
 
+    wl_signal_emit(&unmanaged->server->events.wsland_window_destroy, unmanaged);
     wl_list_remove(&unmanaged->events.request_configure.link);
-    wl_list_remove(&unmanaged->events.set_parent.link);
     wl_list_remove(&unmanaged->events.dissociate.link);
     wl_list_remove(&unmanaged->events.associate.link);
     wl_list_remove(&unmanaged->events.destroy.link);
+    wl_list_remove(&unmanaged->children);
     free(unmanaged);
-}
-
-static wsland_unmanaged *create_unmanaged(wsland_server *server, struct wlr_xwayland_surface *xwayland_surface) {
-    wsland_unmanaged *unmanaged = calloc(1, sizeof(*unmanaged));
-    unmanaged->xwayland = xwayland_surface;
-    unmanaged->server = server;
-
-    unmanaged->xwayland->data = unmanaged;
-
-    LISTEN(&xwayland_surface->events.request_configure, &unmanaged->events.request_configure, unmanaged_request_configure);
-    LISTEN(&xwayland_surface->events.set_parent, &unmanaged->events.set_parent, unmanaged_set_parent);
-    LISTEN(&xwayland_surface->events.dissociate, &unmanaged->events.dissociate, unmanaged_dissociate);
-    LISTEN(&xwayland_surface->events.associate, &unmanaged->events.associate, unmanaged_associate);
-    LISTEN(&xwayland_surface->events.destroy, &unmanaged->events.destroy, unmanaged_destroy);
-    return unmanaged;
 }
 
 static void xwayland_map(struct wl_listener *listener, void *data) {
     wsland_window *window = wl_container_of(listener, window, events.map);
+    window->parent = window->handle->fetch_parent(window);
 
     window->tree = wlr_scene_subsurface_tree_create(&window->server->scene->tree, window->xwayland->surface);
-    window->tree->node.data = window;
-
+    window->tree->node.data = window->xwayland->surface->data = window;
     window_center(window);
 
-    if (window->xwayland->parent) {
-        wsland_window *parent = window->handle->window_fetch_parent(window);
-        wl_list_insert(&parent->children, &window->parent_link);
+    if (window->parent) {
+        wl_list_insert(&window->parent->children, &window->parent_link);
     }
 
     wl_list_insert(&window->server->windows, &window->server_link);
@@ -306,43 +272,68 @@ static void xwayland_destroy(struct wl_listener *listener, void *data) {
 
     wl_signal_emit(&window->server->events.wsland_window_destroy, window);
     wl_list_remove(&window->events.request_configure.link);
+    wl_list_remove(&window->events.request_maximize.link);
+    wl_list_remove(&window->events.request_activate.link);
     wl_list_remove(&window->events.dissociate.link);
     wl_list_remove(&window->events.associate.link);
     wl_list_remove(&window->events.destroy.link);
+    wl_list_remove(&window->children);
     free(window);
 }
 
 wsland_window_handle wsland_xwayland_window_impl = {
-    .window_fetch_title = window_fetch_title,
-    .window_fetch_parent = window_fetch_parent,
-    .window_fetch_output = window_fetch_output,
-    .window_fetch_surface = window_fetch_surface,
-    .window_fetch_geometry = window_fetch_geometry,
+    .fetch_title = fetch_title,
+    .fetch_parent = fetch_parent,
+    .fetch_output = fetch_output,
+    .fetch_surface = fetch_surface,
+    .fetch_geometry = fetch_geometry,
 
     .window_resize = window_resize,
     .window_center = window_center,
+    .window_motion = window_motion,
     .window_activate = window_activate,
     .window_maximize = window_maximize,
     .window_shutdown = window_shutdown,
     .surface_activate = surface_activate,
     .window_grab_cannot = window_grab_cannot,
+    .window_click_cannot = window_click_cannot,
+    .window_resize_cannot = window_resize_cannot,
 };
+
+static wsland_window *create_unmanaged(wsland_server *server, struct wlr_xwayland_surface *xwayland_surface) {
+    wsland_window *unmanaged = calloc(1, sizeof(*unmanaged));
+    unmanaged->handle = &wsland_xwayland_window_impl;
+    unmanaged->xwayland = xwayland_surface;
+    unmanaged->server = server;
+    unmanaged->type = POPUP;
+
+    unmanaged->xwayland->data = unmanaged;
+
+    LISTEN(&xwayland_surface->events.request_configure, &unmanaged->events.request_configure, unmanaged_request_configure);
+    LISTEN(&xwayland_surface->events.dissociate, &unmanaged->events.dissociate, unmanaged_dissociate);
+    LISTEN(&xwayland_surface->events.associate, &unmanaged->events.associate, unmanaged_associate);
+    LISTEN(&xwayland_surface->events.destroy, &unmanaged->events.destroy, unmanaged_destroy);
+    wl_list_init(&unmanaged->parent_link);
+    wl_list_init(&unmanaged->server_link);
+    wl_list_init(&unmanaged->children);
+    return unmanaged;
+}
 
 static wsland_window *create_xwayland_window(wsland_server *server, struct wlr_xwayland_surface *xwayland_surface) {
     wsland_window *window = calloc(1, sizeof(*window));
     window->handle = &wsland_xwayland_window_impl;
     window->xwayland = xwayland_surface;
     window->server = server;
-    window->type = XWAYLAND;
 
+    window->type = XWAYLAND;
     window->xwayland->data = window;
 
-    LISTEN(&window->xwayland->events.request_configure, &window->events.request_configure, xwayland_request_configure);
-    LISTEN(&window->xwayland->events.request_activate, &window->events.request_activate, xwayland_request_activate);
-    LISTEN(&window->xwayland->events.request_maximize, &window->events.request_maximize, xwayland_request_maximize);
-    LISTEN(&window->xwayland->events.dissociate, &window->events.dissociate, xwayland_dissociate);
-    LISTEN(&window->xwayland->events.associate, &window->events.associate, xwayland_associate);
-    LISTEN(&window->xwayland->events.destroy, &window->events.destroy, xwayland_destroy);
+    LISTEN(&xwayland_surface->events.request_configure, &window->events.request_configure, xwayland_request_configure);
+    LISTEN(&xwayland_surface->events.request_activate, &window->events.request_activate, xwayland_request_activate);
+    LISTEN(&xwayland_surface->events.request_maximize, &window->events.request_maximize, xwayland_request_maximize);
+    LISTEN(&xwayland_surface->events.dissociate, &window->events.dissociate, xwayland_dissociate);
+    LISTEN(&xwayland_surface->events.associate, &window->events.associate, xwayland_associate);
+    LISTEN(&xwayland_surface->events.destroy, &window->events.destroy, xwayland_destroy);
     wl_list_init(&window->parent_link);
     wl_list_init(&window->server_link);
     wl_list_init(&window->children);
@@ -352,6 +343,16 @@ static wsland_window *create_xwayland_window(wsland_server *server, struct wlr_x
 static void xwayland_ready(struct wl_listener *listener, void *data) {
     wsland_server *server = wl_container_of(listener, server, events.xwayland_ready);
     wlr_xwayland_set_seat(server->xwayland, server->seat);
+
+    int num_current = 0;
+    int num_workareas = wl_list_length(&server->outputs);
+    struct wlr_box *workareas = malloc(num_workareas * sizeof(*workareas));
+    wsland_output *output;
+    wl_list_for_each(output, &server->outputs, server_link) {
+        workareas[num_current++] = output->monitor;
+    }
+    wlr_xwayland_set_workareas(server->xwayland, workareas, num_workareas);
+    free(workareas);
 }
 
 static void xwayland_new_toplevel(struct wl_listener *listener, void *data) {

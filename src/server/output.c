@@ -162,6 +162,8 @@ wsland_output *wsland_output_create(wsland_server *server, int width, int height
     wlr_pointer_init(&output->pointer, &wsland_pointer_impl, wsland_pointer_impl.name);
     output->pointer.output_name = strdup(output->output.name);
 
+    pixman_region32_init(&output->frame_commit_damage);
+    pixman_region32_init(&output->pending_commit_damage);
     wl_signal_emit_mutable(&server->backend->events.new_output, output);
     wl_signal_emit_mutable(&server->backend->events.new_input, &output->pointer.base);
     return output;

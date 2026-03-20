@@ -11,7 +11,7 @@
 
 #include "wsland/utils/config.h"
 
-#define WSLAND_DEFAULT_REFRESH (60 * 1000) // 60 Hz
+#define WSLAND_DEFAULT_REFRESH (66 * 1000) // 60 Hz
 #define LISTEN(E, L, H) wl_signal_add((E), ((L)->notify = (H), (L)))
 #define MAX(A, B) ((A) > (B) ? (A) : (B))
 #define MIN(A, B) ((A) < (B) ? (A) : (B))
@@ -29,14 +29,19 @@ typedef enum wsland_cursor_mode {
 } wsland_cursor_mode;
 
 typedef struct wsland_window_handle {
-    char* (*window_fetch_title)(struct wsland_window *window);
-    struct wlr_box* (*window_fetch_geometry)(struct wsland_window *window);
-    struct wlr_surface* (*window_fetch_surface)(struct wsland_window *window);
-    struct wsland_window* (*window_fetch_parent)(struct wsland_window *window);
-    struct wsland_output* (*window_fetch_output)(struct wsland_window *window);
+    char* (*fetch_title)(struct wsland_window *window);
+    bool* (*fetch_unmanaged)(struct wsland_window *window);
+    struct wlr_box* (*fetch_geometry)(struct wsland_window *window);
+    struct wlr_surface* (*fetch_surface)(struct wsland_window *window);
+    struct wsland_window* (*fetch_parent)(struct wsland_window *window);
+    struct wsland_output* (*fetch_output)(struct wsland_window *window);
+    struct wlr_scene_tree* (*scene_surface_create)(struct wsland_window *window);
     void (*window_resize)(struct wsland_window *window, int width, int height);
+    void (*window_motion)(struct wsland_window *window, int pos_x, int pos_y);
     void (*window_activate)(struct wsland_window *window, bool enabled);
     void (*surface_activate)(struct wlr_surface *surface, bool enabled);
+    bool (*window_resize_cannot)(struct wsland_window *window);
+    bool (*window_click_cannot)(struct wsland_window *window);
     bool (*window_grab_cannot)(struct wsland_window *window);
     void (*window_maximize)(struct wsland_window *window);
     void (*window_shutdown)(struct wsland_window *window);
@@ -44,7 +49,6 @@ typedef struct wsland_window_handle {
 } wsland_window_handle;
 
 typedef struct wsland_server_handle {
-    void (*new_surface)(struct wl_listener *listener, void *data);
     void (*new_output)(struct wl_listener *listener, void *data);
     void (*new_input)(struct wl_listener *listener, void *data);
     void (*cursor_motion)(struct wl_listener *listener, void *data);
@@ -59,16 +63,6 @@ typedef struct wsland_server_handle {
     void (*begin_window_interactive)(struct wsland_window *window, wsland_cursor_mode mode, uint32_t edges);
     void (*dispatch_window_focus)(struct wsland_window *window);
 } wsland_server_handle;
-
-typedef struct wsland_surface {
-    struct wlr_surface *surface;
-
-    struct {
-        struct wl_listener destroy;
-    } events;
-
-    struct wsland_window *window;
-} wsland_surface;
 
 typedef struct wsland_keyboard {
     struct wlr_keyboard keyboard;
@@ -91,6 +85,7 @@ typedef struct wsland_output {
     struct wsland_server *server;
     struct wlr_scene_output *scene_output;
     pixman_region32_t pending_commit_damage;
+    pixman_region32_t frame_commit_damage;
     struct wlr_box taskbar_area;
     struct wlr_box work_area;
 
@@ -99,6 +94,7 @@ typedef struct wsland_output {
         struct wl_listener destroy;
     } events;
 
+    bool frame_pending;
     struct wl_event_source *frame_timer;
     int frame_delay; // ms
     bool primary;
@@ -119,7 +115,9 @@ typedef struct wsland_server {
     struct wlr_subcompositor *subcompositor;
     struct wlr_data_device_manager *data_device_manager;
     struct wlr_server_decoration_manager *server_decoration_manager;
+    struct wlr_relative_pointer_manager_v1 *relative_pointer_manager;
     struct wlr_xdg_decoration_manager_v1 *xdg_decoration_manager;
+    struct wlr_pointer_constraints_v1 *pointer_constraints;
     struct wlr_xcursor_manager *cursor_manager;
     struct wlr_viewporter *viewporter;
     struct wlr_xdg_shell *xdg_shell;
@@ -131,6 +129,8 @@ typedef struct wsland_server {
 
     struct wlr_output_layout *output_layout;
     struct wlr_scene_output_layout *scene_layout;
+    struct wlr_xdg_output_manager_v1 *xdg_output_manager_v1;
+    struct wlr_output_manager_v1 *output_manager_v1;
 
     struct wl_list outputs;
     struct wl_list keyboards;
@@ -157,7 +157,6 @@ typedef struct wsland_server {
     } cache_cursor;
 
     struct {
-        struct wl_listener new_surface;
         struct wl_listener new_output;
         struct wl_listener new_input;
         struct wl_listener cursor_axis;
@@ -169,7 +168,6 @@ typedef struct wsland_server {
         struct wl_listener cursor_motion_absolute;
 
         struct wl_listener wayland_new_toplevel;
-        struct wl_listener wayland_new_popup;
 
         struct wl_listener xwayland_new_toplevel;
         struct wl_listener xwayland_ready;

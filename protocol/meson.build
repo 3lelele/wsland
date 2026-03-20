@@ -17,6 +17,7 @@ wayland_scanner = find_program(
 protocols = {
     # Stable upstream protocols
     'xdg-shell': wl_protocol_dir / 'stable/xdg-shell/xdg-shell.xml',
+    'pointer-constraints': wl_protocol_dir / 'unstable/pointer-constraints/pointer-constraints-unstable-v1.xml',
 }
 
 protocols_code = {}

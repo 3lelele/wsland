@@ -18,9 +18,6 @@
 #define MAX_FREERDP_FDS 32
 #define MAX_FREERDP_KEYS 256
 
-#define RAIL_MARKER_WINDOW_ID  0xFFFFFFFE
-#define RAIL_DESKTOP_WINDOW_ID 0xFFFFFFFF
-
 #define DISPATCH(C, T, D, CB) { \
     wsland_peer *peer = (C)->custom; \
     dispatch_data *data = malloc(sizeof(*data)); \

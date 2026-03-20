@@ -95,7 +95,7 @@ wayland_kwargs = {
 include_dir = include_directories('include')
 subdir('protocol')
 
-executable('wsland', [sources, protocols_server_header['xdg-shell']], include_directories : [include_dir], dependencies : [
+executable('wsland', [sources, protocols_server_header['xdg-shell'], protocols_server_header['pointer-constraints']], include_directories : [include_dir], dependencies : [
     dep_wlroots, dep_winpr, dep_freerdp, dep_rdpapplist, dep_freerdp_server, dep_wayland_server,
     dep_pixman, def_cairo, dep_openssl, dep_xkbcommon, dep_xcb, dep_xwayland
 ])

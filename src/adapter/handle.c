@@ -8,6 +8,7 @@
 #include <wlr/render/drm_format_set.h>
 #include <wlr/interfaces/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/render/swapchain.h>
 #include <wlr/types/wlr_scene.h>
@@ -17,6 +18,9 @@
 #include "wsland/adapter.h"
 #include "wsland/utils/box.h"
 #include "wsland/utils/log.h"
+
+#define RAIL_MARKER_WINDOW_ID  0xFFFFFFFE
+#define RAIL_DESKTOP_WINDOW_ID 0xFFFFFFFF
 
 #define RAIL_WINDOW_FULLSCREEN_STYLE (WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS | WS_GROUP | WS_TABSTOP)
 #define RAIL_WINDOW_NORMAL_STYLE (RAIL_WINDOW_FULLSCREEN_STYLE | WS_THICKFRAME | WS_CAPTION)
@@ -118,37 +122,33 @@ static struct wlr_texture *scene_buffer_get_texture(struct wlr_scene_buffer *sce
     return texture;
 }
 
-struct render_node {
+struct frame_node {
     wsland_window *window;
-    struct wlr_box box;
-
-    uint8_t *data;
-    int data_size, bpp;
 };
 
 struct detection_node {
     struct wlr_scene_buffer *buffer;
-    int sx, sy, width, height;
+    struct wlr_box geometry;
 };
 
 struct detection_data {
-    pixman_region32_t region;
     struct wlr_box pending;
-    struct wl_array nodes;
+    pixman_region32_t region;
+    struct wl_array render_nodes;
 
-    bool create, update, offset, resize, parent, title, damage;
+    bool create, update, offset, resize, parent, title;
 
     wsland_output *output;
     wsland_adapter *adapter;
     wsland_window *window;
 };
 
-static void collect_region(struct wlr_scene_buffer *buffer, int sx, int sy, void *user_data) {
+static void collect_region(struct wlr_scene_buffer *scene_buffer, int sx, int sy, void *user_data) {
     pixman_region32_t *region = user_data;
 
     int width, height;
-    scene_node_get_size(&buffer->node, &width, &height);
-    pixman_region32_union_rect(region, region, sx, sy, width, height);
+    scene_node_get_size(&scene_buffer->node, &width, &height);
+    pixman_region32_union_rect(region, region, sx, sy ,width, height);
 }
 
 static void collect_detection(struct wlr_scene_buffer *scene_buffer, int sx, int sy, void *user_data) {
@@ -157,24 +157,14 @@ static void collect_detection(struct wlr_scene_buffer *scene_buffer, int sx, int
     int width, height;
     scene_node_get_size(&scene_buffer->node, &width, &height);
 
-    struct detection_node *node = wl_array_add(&data->nodes, sizeof(*node));
+    struct detection_node *node = wl_array_add(&data->render_nodes, sizeof(*node));
+    node->geometry = (struct wlr_box){ sx, sy, width, height };
     node->buffer = scene_buffer;
-    node->height = height;
-    node->width = width;
-    node->sx = sx;
-    node->sy = sy;
 
-    pixman_region32_t mix_damage;
-    pixman_region32_init_rect(&mix_damage, sx, sy, width, height);
-    pixman_region32_union(&data->region, &data->region, &mix_damage);
-
-    if (!data->damage) {
-        pixman_region32_intersect(&mix_damage, &mix_damage, &data->output->pending_commit_damage);
-        if (pixman_region32_not_empty(&mix_damage)) {
-            data->damage = true;
-        }
-    }
-    pixman_region32_fini(&mix_damage);
+    pixman_region32_t region;
+    pixman_region32_init_rect(&region, sx, sy, width, height);
+    pixman_region32_union(&data->region, &data->region, &region);
+    pixman_region32_fini(&region);
 }
 
 static void wsland_window_update(struct detection_data *data) {
@@ -325,7 +315,13 @@ static void wsland_window_update(struct detection_data *data) {
     }
 }
 
-static void wsland_window_detection(wsland_output *output, wsland_adapter *adapter, wsland_window *window, struct wl_array *render_nodes) {
+static void test(struct wlr_surface *surface, int sx, int sy, void *data) {
+    struct wlr_xdg_toplevel *toplevel = wlr_xdg_toplevel_try_from_wlr_surface(surface);
+    struct wlr_xdg_popup *popup = wlr_xdg_popup_try_from_wlr_surface(surface);
+    struct wlr_subsurface *subsurface = wlr_subsurface_try_from_wlr_surface(surface);
+}
+
+static void wsland_window_detection(wsland_output *output, wsland_adapter *adapter, wsland_window *window) {
     struct detection_data data = { .output = output, .adapter = adapter, .window = window };
 
     if (!window->window_id) {
@@ -333,20 +329,35 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
         data.create = true;
     }
 
-    wl_array_init(&data.nodes);
+    struct wlr_surface *surface = window->handle->fetch_surface(window);
+    struct wlr_box geometry;
+    wlr_surface_get_extents(surface, &geometry);
+    wlr_surface_for_each_surface(surface, test, NULL);
+
+    wl_array_init(&data.render_nodes);
     pixman_region32_init(&data.region);
+    window->damage = (struct wlr_box){0};
     wlr_scene_node_for_each_buffer(&window->tree->node, collect_detection, &data);
     region_to_box(&data.region, &data.pending);
-    pixman_region32_fini(&data.region);
+    pixman_region32_intersect(&data.region, &data.region, &output->pending_commit_damage);
 
     if (window->current.width != data.pending.width || window->current.height != data.pending.height) {
+        if (window->buffer) {
+            wlr_buffer_drop(window->buffer);
+            window->buffer = NULL;
+        }
+
         if (data.pending.width > 0 && data.pending.height > 0) {
-            if (window->swapchain) {
-                wlr_swapchain_destroy(window->swapchain);
-            }
-            window->swapchain = wlr_swapchain_create(
+            window->buffer = wlr_allocator_create_buffer(
                 window->server->allocator, data.pending.width, data.pending.height,
                 &(const struct wlr_drm_format) { .format = DRM_FORMAT_ABGR8888 }
+            );
+
+            pixman_region32_clear(&data.region);
+            pixman_region32_union_rect(
+                &data.region, &data.region,
+                data.pending.x, data.pending.y,
+                data.pending.width, data.pending.height
             );
             window->current.width = data.pending.width;
             window->current.height = data.pending.height;
@@ -354,6 +365,7 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
             data.update = true;
         }
     }
+    pixman_region32_translate(&data.region, -data.pending.x, -data.pending.y);
 
     if (window->current.x != data.pending.x || window->current.y != data.pending.y) {
         window->current.x = data.pending.x;
@@ -364,8 +376,10 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
 
     if (window->handle) {
         char *title;
-        if ((title = window->handle->window_fetch_title(window)) != NULL) {
+        if ((title = window->handle->fetch_title(window)) != NULL) {
             if (!window->title || strcmp(window->title, title) != 0) {
+                if (window->title) { free(window->title); }
+
                 window->title = strdup(title);
                 data.title = true;
                 data.update = true;
@@ -373,7 +387,7 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
         }
 
         wsland_window *parent;
-        if ((parent = window->handle->window_fetch_parent(window)) != NULL && parent->window_id != window->parent_id) {
+        if ((parent = window->handle->fetch_parent(window)) != NULL && parent->window_id != window->parent_id) {
             window->parent_id = parent->window_id;
             data.parent = true;
             data.update = true;
@@ -384,22 +398,28 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
         wsland_window_update(&data);
     }
 
-    struct wlr_buffer *buffer;
-    if (data.damage && (buffer = wlr_swapchain_acquire(data.window->swapchain, NULL)) != NULL) {
-        struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(window->server->renderer, buffer, NULL);
+    if (window->buffer != NULL && pixman_region32_not_empty(&data.region)) {
+        struct wlr_render_pass *render_pass = wlr_renderer_begin_buffer_pass(window->server->renderer, window->buffer, NULL);
 
-        if (pass) {
-            wlr_render_pass_add_rect(pass, &(const struct wlr_render_rect_options) {
+        if (render_pass) {
+            struct wlr_box damage_box = {0};
+            region_to_box(&data.region, &damage_box);
+
+            wlr_render_pass_add_rect(render_pass, &(const struct wlr_render_rect_options) {
                 .box = { 0, 0, window->current.width, window->current.height },
                 .color = { 0, 0, 0,  0 }, .blend_mode = WLR_RENDER_BLEND_MODE_NONE
             });
 
-            struct detection_node *d_node;
-            wl_array_for_each(d_node, &data.nodes) {
+            struct detection_node *render_node;
+            wl_array_for_each(render_node, &data.render_nodes) {
                 pixman_region32_t render_region;
-                pixman_region32_init_rect(&render_region, d_node->sx, d_node->sy, d_node->width, d_node->height);
+                pixman_region32_init_rect(
+                    &render_region,
+                    render_node->geometry.x, render_node->geometry.y,
+                    render_node->geometry.width, render_node->geometry.height
+                );
                 pixman_region32_translate(&render_region, -window->current.x, -window->current.y);
-                if (!pixman_region32_not_empty(&render_region)) {
+                if (pixman_region32_empty(&render_region)) {
                     pixman_region32_fini(&render_region);
                     continue;
                 }
@@ -409,15 +429,15 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
 
                 pixman_region32_t opaque;
                 pixman_region32_init(&opaque);
-                scene_node_opaque_region(&d_node->buffer->node, dst_box.x, dst_box.y, &opaque);
+                scene_node_opaque_region(&render_node->buffer->node, dst_box.x, dst_box.y, &opaque);
                 pixman_region32_subtract(&opaque, &render_region, &opaque);
 
-                struct wlr_texture *texture = scene_buffer_get_texture(d_node->buffer, window->server->renderer);
+                struct wlr_texture *texture = scene_buffer_get_texture(render_node->buffer, window->server->renderer);
 
                 if (texture) {
-                    wlr_render_pass_add_texture(pass, &(struct wlr_render_texture_options) {
-                        .texture = texture, .src_box = d_node->buffer->src_box, .dst_box = dst_box,
-                        .clip = &render_region, .alpha = &d_node->buffer->opacity, .filter_mode = d_node->buffer->filter_mode,
+                    wlr_render_pass_add_texture(render_pass, &(struct wlr_render_texture_options) {
+                        .texture = texture, .src_box = render_node->buffer->src_box, .dst_box = dst_box,
+                        .clip = &render_region, .alpha = &render_node->buffer->opacity, .filter_mode = render_node->buffer->filter_mode,
                         .blend_mode = pixman_region32_not_empty(&opaque) ? WLR_RENDER_BLEND_MODE_PREMULTIPLIED : WLR_RENDER_BLEND_MODE_NONE,
                     });
                 }
@@ -426,70 +446,39 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
                 pixman_region32_fini(&opaque);
             }
 
-            if (wlr_render_pass_submit(pass)) {
-                struct wlr_texture *texture = wlr_texture_from_buffer(window->server->renderer, buffer);
-
-                int bpp = 4; /* Bytes Per Pixel. */
-                struct wlr_box box = { .width = window->current.width, .height = window->current.height };
-
-                int damage_stride = box.width * 4;
-                int damage_size = damage_stride * box.height;
-                uint8_t *ptr = malloc(damage_size);
-
-                if (wlr_texture_read_pixels(
-                    texture, &(const struct wlr_texture_read_pixels_options){
-                        .data = ptr, .format = DRM_FORMAT_ARGB8888, .stride = damage_stride,
-                        .src_box = { box.x, box.y, box.width, box.height },
-                    }
-                )) {
-                    struct render_node *r_node = wl_array_add(render_nodes, sizeof(*r_node));
-                    r_node->data_size = damage_size;
-                    r_node->window = window;
-                    r_node->data = ptr;
-                    r_node->box = box;
-                    r_node->bpp = bpp;
-                }
-                wlr_texture_destroy(texture);
+            if (wlr_render_pass_submit(render_pass)) {
+                window->buffer_opaque = wlr_buffer_is_opaque(window->buffer);
+                region_to_box(&data.region, &window->damage);
             }
         }
-        wlr_buffer_unlock(buffer);
     }
-    wl_array_release(&data.nodes);
+    wl_array_release(&data.render_nodes);
+    pixman_region32_fini(&data.region);
 }
 
 static void wsland_window_motion(struct wl_listener *listener, void *data) {
     wsland_adapter *adapter = wl_container_of(listener, adapter, events.wsland_window_motion);
     wsland_window *window = data;
 
-    if (!adapter->freerdp->peer || !window->window_id) {
-        return;
-    }
+    WINDOW_ORDER_INFO window_order_info = {0};
+    WINDOW_STATE_ORDER window_state_order = {0};
+
+    window_order_info.windowId = window->window_id;
+    window_order_info.fieldFlags = WINDOW_ORDER_TYPE_WINDOW;
 
     pixman_region32_t region;
     pixman_region32_init(&region);
     wlr_scene_node_for_each_buffer(&window->tree->node, collect_region, &region);
-    if (window->current.x != region.extents.x1 || window->current.y != region.extents.y1) {
-        window->current.x = region.extents.x1;
-        window->current.y = region.extents.y1;
 
-        {
-            WINDOW_ORDER_INFO window_order_info = {0};
-            WINDOW_STATE_ORDER window_state_order = {0};
-
-            window_order_info.windowId = window->window_id;
-            window_order_info.fieldFlags = WINDOW_ORDER_TYPE_WINDOW;
-
-            window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_OFFSET;
-            window_state_order.windowOffsetX = window->current.x;
-            window_state_order.windowOffsetY = window->current.y;
-
-            struct rdp_update *update = adapter->freerdp->peer->peer->update;
-            update->BeginPaint(update->context);
-            update->window->WindowUpdate(update->context, &window_order_info, &window_state_order);
-            update->EndPaint(update->context);
-        }
-    }
+    window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_OFFSET;
+    window_state_order.windowOffsetX = window->current.x = region.extents.x1;
+    window_state_order.windowOffsetY = window->current.y = region.extents.y1;
     pixman_region32_fini(&region);
+
+    struct rdp_update *update = adapter->freerdp->peer->peer->update;
+    update->BeginPaint(update->context);
+    update->window->WindowUpdate(update->context, &window_order_info, &window_state_order);
+    update->EndPaint(update->context);
 }
 
 static void wsland_window_destroy(struct wl_listener *listener, void *data) {
@@ -525,8 +514,9 @@ static void wsland_window_destroy(struct wl_listener *listener, void *data) {
 
 destroy_window_data:
     if (window->window_id) {
-        if (window->swapchain) {
-            wlr_swapchain_destroy(window->swapchain);
+        if (window->buffer) {
+            wlr_buffer_drop(window->buffer);
+            window->buffer = NULL;
         }
         if (window->title) {
             free(window->title);
@@ -620,44 +610,63 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
             return;
         }
         if (adapter->freerdp->peer->current_frame_id - adapter->freerdp->peer->acknowledged_frame_id >= 2) {
-            return;
-        }
-        if (output->server->move.mode == WSLAND_CURSOR_MOVE) {
+            pixman_region32_copy(&output->frame_commit_damage, &output->pending_commit_damage);
+            output->frame_pending = true;
             return;
         }
     }
     RdpgfxServerContext *gfx_ctx = adapter->freerdp->peer->ctx_server_rdpgfx;
 
-    struct wl_array render_nodes;
+    struct wl_array frame_nodes;
+    wl_array_init(&frame_nodes);
     {
-        wl_array_init(&render_nodes);
-
         wsland_window *window;
         wl_list_for_each(window, &output->server->windows, server_link) {
-            wsland_window_detection(output, adapter, window, &render_nodes);
+            wsland_window_detection(output, adapter, window);
+
+            if (!wlr_box_empty(&window->damage)) {
+                struct frame_node *node = wl_array_add(&frame_nodes, sizeof(*node));
+                node->window = window;
+            }
         }
     }
 
-    if (render_nodes.size > 0) {
-        int frame_id = ++adapter->freerdp->peer->current_frame_id;
+    if (output->server->move.mode == WSLAND_CURSOR_MOVE) {
+        pixman_region32_copy(&output->frame_commit_damage, &output->pending_commit_damage);
+        output->frame_pending = true;
+        goto release;
+    }
 
-        RDPGFX_START_FRAME_PDU start_frame = { .frameId = frame_id };
+    {
+        RDPGFX_START_FRAME_PDU start_frame = {0};
+        start_frame.frameId = ++adapter->freerdp->peer->current_frame_id;
         gfx_ctx->StartFrame(gfx_ctx, &start_frame);
-        {
-            struct render_node *node;
-            wl_array_for_each(node, &render_nodes) {
-                BYTE *data = node->data;
-                bool has_alpha = true;
+
+        struct frame_node *node;
+        wl_array_for_each(node, &frame_nodes) {
+            wsland_window *window = node->window;
+            struct wlr_texture *texture = wlr_texture_from_buffer(window->server->renderer, window->buffer);
+
+            int damage_bpp = 4; /* Bytes Per Pixel. */
+            int damage_stride = window->damage.width * damage_bpp;
+            int damage_size = damage_stride * window->damage.height;
+            int bitmap_size = window->damage.width * window->damage.height;
+            uint8_t *data = malloc(damage_size);
+
+            if (wlr_texture_read_pixels(
+                texture, &(const struct wlr_texture_read_pixels_options){
+                    .data = data, .src_box = window->damage, .stride = damage_stride,
+                    .format = DRM_FORMAT_ARGB8888
+                }
+            )) {
                 int alpha_size;
                 BYTE *alpha;
                 {
                     int alpha_codec_header_size = 4;
-                    if (has_alpha) {
-                        alpha_size = alpha_codec_header_size + node->box.width * node->box.height;
-                    }
-                    else {
-                        /* 8 = max of ALPHA_RLE_SEGMENT for single alpha value. */
+                    if (window->buffer_opaque) { /* 8 = max of ALPHA_RLE_SEGMENT for single alpha value. */
                         alpha_size = alpha_codec_header_size + 8;
+                    } else {
+                        alpha_size = alpha_codec_header_size + bitmap_size;
                     }
                     alpha = malloc(alpha_size);
 
@@ -665,24 +674,10 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
                     /* set up alpha codec header */
                     alpha[0] = 'L'; /* signature */
                     alpha[1] = 'A'; /* signature */
-                    alpha[2] = has_alpha ? 0 : 1; /* compression: RDP spec indicate this is non-zero value for compressed, but it must be 1.*/
+                    alpha[2] = window->buffer_opaque ? 1 : 0; /* compression: RDP spec indicate this is non-zero value for compressed, but it must be 1.*/
                     alpha[3] = 0; /* compression */
 
-                    if (has_alpha) {
-                        BYTE *alpha_bits = &data[0];
-
-                        for (int i = 0; i < node->box.height; i++, alpha_bits += node->box.width * node->bpp) {
-                            BYTE *src_alpha_pixel = alpha_bits + 3; /* 3 = xxxA. */
-                            BYTE *dst_alpha_pixel = &alpha[alpha_codec_header_size + i * node->box.width];
-
-                            for (int j = 0; j < node->box.width; j++, src_alpha_pixel += node->bpp, dst_alpha_pixel++) {
-                                *dst_alpha_pixel = *src_alpha_pixel;
-                            }
-                        }
-                    }
-                    else {
-                        int bitmap_size = node->box.width * node->box.height;
-
+                    if (window->buffer_opaque) {
                         alpha[alpha_codec_header_size] = 0xFF; /* alpha value (opaque) */
                         if (bitmap_size < 0xFF) {
                             alpha[alpha_codec_header_size + 1] = (BYTE)bitmap_size;
@@ -700,17 +695,29 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
                             alpha_size = alpha_codec_header_size + 8; /* alpha value + 1 + 2 + size in int. */
                         }
                     }
+                    else {
+                        BYTE *alpha_bits = &data[0];
+
+                        for (int i = 0; i < window->damage.height; i++, alpha_bits += damage_stride) {
+                            BYTE *src_alpha_pixel = alpha_bits + 3; /* 3 = xxxA. */
+                            BYTE *dst_alpha_pixel = &alpha[alpha_codec_header_size + i * window->damage.width];
+
+                            for (int j = 0; j < window->damage.width; j++, src_alpha_pixel += damage_bpp, dst_alpha_pixel++) {
+                                *dst_alpha_pixel = *src_alpha_pixel;
+                            }
+                        }
+                    }
                 }
 
                 RDPGFX_SURFACE_COMMAND surface_command = {0};
-                surface_command.surfaceId = node->window->surface_id;
+                surface_command.surfaceId = window->surface_id;
                 surface_command.format = PIXEL_FORMAT_BGRA32;
-                surface_command.left = node->box.x;
-                surface_command.top = node->box.y;
-                surface_command.right = node->box.x + node->box.width;
-                surface_command.bottom = node->box.y + node->box.height;
-                surface_command.width = node->box.width;
-                surface_command.height = node->box.height;
+                surface_command.left = window->damage.x;
+                surface_command.top = window->damage.y;
+                surface_command.right = window->damage.x + window->damage.width;
+                surface_command.bottom = window->damage.y + window->damage.height;
+                surface_command.width = window->damage.width;
+                surface_command.height = window->damage.height;
                 surface_command.contextId = 0;
                 surface_command.extra = NULL;
 
@@ -720,21 +727,24 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
                 gfx_ctx->SurfaceCommand(gfx_ctx, &surface_command);
 
                 surface_command.codecId = RDPGFX_CODECID_UNCOMPRESSED;
-                surface_command.length = node->data_size;
+                surface_command.length = damage_size;
                 surface_command.data = &data[0];
                 gfx_ctx->SurfaceCommand(gfx_ctx, &surface_command);
-
-                wsland_frame_buffer *frame_buffer = malloc(sizeof(*frame_buffer));
-                frame_buffer->frame_id = frame_id;
-                frame_buffer->ptr = node->data;
-                frame_buffer->alpha = alpha;
-                wl_list_insert(&adapter->buffers, &frame_buffer->link);
+                free(alpha);
+                free(data);
             }
+            window->damage = (struct wlr_box){0};
+            wlr_texture_destroy(texture);
         }
-        RDPGFX_END_FRAME_PDU endFrame = { .frameId = frame_id };
+
+        RDPGFX_END_FRAME_PDU endFrame = { .frameId = start_frame.frameId };
         gfx_ctx->EndFrame(gfx_ctx, &endFrame);
+
+        pixman_region32_clear(&output->pending_commit_damage);
     }
-    wl_array_release(&render_nodes);
+
+release:
+    wl_array_release(&frame_nodes);
 }
 
 wsland_adapter_handle wsland_adapter_handle_impl = {
