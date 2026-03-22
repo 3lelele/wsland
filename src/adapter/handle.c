@@ -15,6 +15,7 @@
 #include <wlr/render/pixman.h>
 #include <cairo/cairo.h>
 
+#include "wlr/interfaces/wlr_buffer.h"
 #include "wsland/adapter.h"
 #include "wsland/utils/box.h"
 #include "wsland/utils/log.h"
@@ -153,6 +154,10 @@ static void collect_region(struct wlr_scene_buffer *scene_buffer, int sx, int sy
 
 static void collect_detection(struct wlr_scene_buffer *scene_buffer, int sx, int sy, void *user_data) {
     struct detection_data *data = user_data;
+
+    if (!scene_buffer->own_buffer) {
+        return;
+    }
 
     int width, height;
     scene_node_get_size(&scene_buffer->node, &width, &height);
@@ -329,11 +334,6 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
         data.create = true;
     }
 
-    struct wlr_surface *surface = window->handle->fetch_surface(window);
-    struct wlr_box geometry;
-    wlr_surface_get_extents(surface, &geometry);
-    wlr_surface_for_each_surface(surface, test, NULL);
-
     wl_array_init(&data.render_nodes);
     pixman_region32_init(&data.region);
     window->damage = (struct wlr_box){0};
@@ -342,16 +342,20 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
     pixman_region32_intersect(&data.region, &data.region, &output->pending_commit_damage);
 
     if (window->current.width != data.pending.width || window->current.height != data.pending.height) {
-        if (window->buffer) {
+        if (window->texture) {
             wlr_buffer_drop(window->buffer);
+            wlr_buffer_finish(window->buffer);
+            wlr_texture_destroy(window->texture);
+            window->texture = NULL;
             window->buffer = NULL;
         }
 
         if (data.pending.width > 0 && data.pending.height > 0) {
             window->buffer = wlr_allocator_create_buffer(
                 window->server->allocator, data.pending.width, data.pending.height,
-                &(const struct wlr_drm_format) { .format = DRM_FORMAT_ABGR8888 }
+                &(const struct wlr_drm_format) { .format = DRM_FORMAT_ARGB8888 }
             );
+            window->texture = wlr_texture_from_buffer(window->server->renderer, window->buffer);
 
             pixman_region32_clear(&data.region);
             pixman_region32_union_rect(
@@ -398,7 +402,7 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
         wsland_window_update(&data);
     }
 
-    if (window->buffer != NULL && pixman_region32_not_empty(&data.region)) {
+    if (window->texture != NULL && pixman_region32_not_empty(&data.region)) {
         struct wlr_render_pass *render_pass = wlr_renderer_begin_buffer_pass(window->server->renderer, window->buffer, NULL);
 
         if (render_pass) {
@@ -432,8 +436,9 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
                 scene_node_opaque_region(&render_node->buffer->node, dst_box.x, dst_box.y, &opaque);
                 pixman_region32_subtract(&opaque, &render_region, &opaque);
 
-                struct wlr_texture *texture = scene_buffer_get_texture(render_node->buffer, window->server->renderer);
-
+                struct wlr_texture *texture = wlr_texture_from_buffer(
+                    window->server->renderer, render_node->buffer->buffer
+                );
                 if (texture) {
                     wlr_render_pass_add_texture(render_pass, &(struct wlr_render_texture_options) {
                         .texture = texture, .src_box = render_node->buffer->src_box, .dst_box = dst_box,
@@ -441,9 +446,9 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
                         .blend_mode = pixman_region32_not_empty(&opaque) ? WLR_RENDER_BLEND_MODE_PREMULTIPLIED : WLR_RENDER_BLEND_MODE_NONE,
                     });
                 }
-
                 pixman_region32_fini(&render_region);
                 pixman_region32_fini(&opaque);
+                wlr_texture_destroy(texture);
             }
 
             if (wlr_render_pass_submit(render_pass)) {
@@ -486,7 +491,6 @@ static void wsland_window_destroy(struct wl_listener *listener, void *data) {
     wsland_window *window = data;
 
     if (!adapter->freerdp->peer || !window->window_id) {
-        goto destroy_window_data;
         return;
     }
 
@@ -507,97 +511,79 @@ static void wsland_window_destroy(struct wl_listener *listener, void *data) {
         gfx_ctx->DeleteSurface(gfx_ctx, &deleteSurface);
         window->surface_id = 0;
     }
-    window->window_id = 0;
-
-    goto destroy_window_data;
-    return;
-
-destroy_window_data:
-    if (window->window_id) {
-        if (window->buffer) {
-            wlr_buffer_drop(window->buffer);
-            window->buffer = NULL;
-        }
-        if (window->title) {
-            free(window->title);
-        }
+    if (window->texture) {
+        wlr_buffer_drop(window->buffer);
+        wlr_buffer_finish(window->buffer);
+        wlr_texture_destroy(window->texture);
+        window->texture = NULL;
+        window->buffer = NULL;
     }
+    if (window->title) {
+        free(window->title);
+    }
+    window->window_id = 0;
+    return;
 }
 
-static void wsland_cursor_frame(struct wl_listener *listener, void *data) {
+static void wsland_cursor_frame(struct wl_listener *listener, void *user_data) {
     wsland_adapter *adapter = wl_container_of(listener, adapter, events.wsland_cursor_frame);
-    wsland_server *server = data;
+    wsland_server *server = user_data;
 
-    if (!adapter->freerdp->peer || !server->cache_cursor.dirty) {
-        return;
-    }
+    if (adapter->freerdp->peer && server->wsland_cursor.dirty && server->wsland_cursor.buffer) {
+        struct wlr_texture *cursor_texture = wlr_texture_from_buffer(server->renderer, server->wsland_cursor.buffer);
+        int hotspot_x = server->wsland_cursor.b_hotspot_x;
+        int hotspot_y = server->wsland_cursor.b_hotspot_y;
 
-    {
-        if (server->cache_cursor.buffer) {
-            struct wlr_texture *texture = wlr_texture_from_buffer(
-                server->renderer, server->cache_cursor.buffer
-            );
+        struct wlr_buffer *buffer = wlr_allocator_create_buffer(
+            server->allocator, cursor_texture->width, cursor_texture->height,
+            &(const struct wlr_drm_format) { .format = DRM_FORMAT_ARGB8888}
+        );
+        struct wlr_texture *texture = wlr_texture_from_buffer(server->renderer, buffer);
+        struct wlr_render_pass *render_pass = wlr_renderer_begin_buffer_pass(server->renderer, buffer, NULL);
+        wlr_render_pass_add_texture(render_pass, &(const struct wlr_render_texture_options) {
+            .texture = cursor_texture, .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+            .transform = WL_OUTPUT_TRANSFORM_FLIPPED_180,
+        });
 
-            if (texture) {
-                wsland_cursor cursor = {0};
-                struct wlr_buffer *buffer = server->allocator->impl->create_buffer(
-                    server->allocator, texture->width, texture->height,
-                    &(const struct wlr_drm_format) { .format = DRM_FORMAT_ARGB8888}
-                );
+        if (wlr_render_pass_submit(render_pass)) {
+            int cursor_bpp = 4;
+            int width = texture->width;
+            int height = texture->height;
 
-                struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(server->renderer, buffer, NULL);
-                wlr_render_pass_add_texture(pass, &(const struct wlr_render_texture_options) {
-                    .texture = texture, .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
-                    .transform = WL_OUTPUT_TRANSFORM_FLIPPED_180,
-                });
+            int cursor_stride = width * cursor_bpp;
+            int cursor_size = cursor_stride * height;
+            uint8_t *data = malloc(cursor_size);
 
-                void *ptr;
-                size_t stride;
-                uint32_t format;
-                if (wlr_render_pass_submit(pass) && wlr_buffer_begin_data_ptr_access(buffer, WLR_BUFFER_DATA_PTR_ACCESS_READ, &ptr, &format, &stride)) {
-                    wlr_buffer_end_data_ptr_access(buffer);
+            if (wlr_texture_read_pixels(texture, &(const struct wlr_texture_read_pixels_options) {
+                .data = data, .src_box = { 0, 0, width, height }, .stride = cursor_stride,
+                .format = DRM_FORMAT_ARGB8888,
+            })) {
+                rdpUpdate *update = adapter->freerdp->peer->peer->context->update;
 
-                    cursor.data = ptr;
-                    cursor.format = &format;
-                    cursor.stride = &stride;
-                    cursor.dirty = true;
-                }
+                POINTER_LARGE_UPDATE pointerUpdate = {0};
+                pointerUpdate.xorBpp = cursor_bpp * 8;
+                pointerUpdate.cacheIndex = 0;
+                pointerUpdate.hotSpotX = hotspot_x;
+                pointerUpdate.hotSpotY = hotspot_y;
+                pointerUpdate.height = height,
+                pointerUpdate.width = width,
+                pointerUpdate.lengthXorMask = cursor_bpp * width * height;
+                pointerUpdate.xorMaskData = data;
+                pointerUpdate.lengthAndMask = 0;
+                pointerUpdate.andMaskData = NULL;
 
-                cursor.width = server->cache_cursor.buffer->width;
-                cursor.height = server->cache_cursor.buffer->height;
-                cursor.hotspot_x = server->cache_cursor.hotspot_x;
-                cursor.hotspot_y = server->cache_cursor.hotspot_y;
-
-                {
-                    if (!cursor.dirty) {
-                        return;
-                    }
-
-                    int cursor_bpp = 4;
-                    rdpUpdate *update = adapter->freerdp->peer->peer->context->update;
-
-                    POINTER_LARGE_UPDATE pointerUpdate = {0};
-                    pointerUpdate.xorBpp = cursor_bpp * 8;
-                    pointerUpdate.cacheIndex = 0;
-                    pointerUpdate.hotSpotX = cursor.hotspot_x;
-                    pointerUpdate.hotSpotY = cursor.hotspot_y;
-                    pointerUpdate.width = cursor.width,
-                    pointerUpdate.height = cursor.height,
-                    pointerUpdate.lengthXorMask = cursor_bpp * cursor.width * cursor.height;
-                    pointerUpdate.xorMaskData = cursor.data;
-                    pointerUpdate.lengthAndMask = 0;
-                    pointerUpdate.andMaskData = NULL;
-
-                    update->BeginPaint(update->context);
-                    update->pointer->PointerLarge(update->context, &pointerUpdate);
-                    update->EndPaint(update->context);
-                }
-                server->cache_cursor.dirty = false;
-
-                wlr_texture_destroy(texture);
-                wlr_buffer_drop(buffer);
+                update->BeginPaint(update->context);
+                update->pointer->PointerLarge(update->context, &pointerUpdate);
+                update->EndPaint(update->context);
             }
+            free(data);
         }
+        wlr_buffer_drop(buffer);
+        wlr_buffer_finish(buffer);
+        wlr_texture_destroy(texture);
+        wlr_texture_destroy(cursor_texture);
+
+        server->wsland_cursor.dirty = false;
     }
 }
 
@@ -645,7 +631,6 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
         struct frame_node *node;
         wl_array_for_each(node, &frame_nodes) {
             wsland_window *window = node->window;
-            struct wlr_texture *texture = wlr_texture_from_buffer(window->server->renderer, window->buffer);
 
             int damage_bpp = 4; /* Bytes Per Pixel. */
             int damage_stride = window->damage.width * damage_bpp;
@@ -654,7 +639,7 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
             uint8_t *data = malloc(damage_size);
 
             if (wlr_texture_read_pixels(
-                texture, &(const struct wlr_texture_read_pixels_options){
+                window->texture, &(const struct wlr_texture_read_pixels_options){
                     .data = data, .src_box = window->damage, .stride = damage_stride,
                     .format = DRM_FORMAT_ARGB8888
                 }
@@ -734,7 +719,6 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
                 free(data);
             }
             window->damage = (struct wlr_box){0};
-            wlr_texture_destroy(texture);
         }
 
         RDPGFX_END_FRAME_PDU endFrame = { .frameId = start_frame.frameId };

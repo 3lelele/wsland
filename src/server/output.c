@@ -6,8 +6,10 @@
 #include <wlr/interfaces/wlr_output.h>
 #include <wlr/interfaces/wlr_pointer.h>
 #include <wlr/types/wlr_output_layer.h>
+#include <wlr/render/allocator.h>
 #include <wlr/render/swapchain.h>
 
+#include "wlr/interfaces/wlr_buffer.h"
 #include "wsland/server.h"
 #include "wsland/utils/log.h"
 
@@ -72,6 +74,7 @@ static bool output_commit(struct wlr_output *wlr_output, const struct wlr_output
     }
 
     if (enable) {
+        wl_signal_emit(&state->buffer->events.destroy, state->buffer);
         wl_event_source_timer_update(output->frame_timer, output->frame_delay);
     }
 
@@ -79,19 +82,12 @@ static bool output_commit(struct wlr_output *wlr_output, const struct wlr_output
 }
 
 static bool output_set_cursor(struct wlr_output *wlr_output, struct wlr_buffer *buffer, int hotspot_x, int hotspot_y) {
-    wsland_output *output = wl_container_of(wlr_output, output, output);
+    wsland_output *output = wsland_output_from_output(wlr_output);
 
-    if (buffer) {
-        wlr_buffer_lock(buffer);
-    }
-
-    if (output->server->cache_cursor.buffer) {
-        wlr_buffer_unlock(output->server->cache_cursor.buffer);
-    }
-    output->server->cache_cursor.buffer = buffer;
-    output->server->cache_cursor.hotspot_x = hotspot_x;
-    output->server->cache_cursor.hotspot_y = hotspot_y;
-    output->server->cache_cursor.dirty = true;
+    output->server->wsland_cursor.buffer = buffer;
+    output->server->wsland_cursor.b_hotspot_x = hotspot_x;
+    output->server->wsland_cursor.b_hotspot_y = hotspot_y;
+    output->server->wsland_cursor.dirty = true;
     return true;
 }
 

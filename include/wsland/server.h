@@ -30,7 +30,6 @@ typedef enum wsland_cursor_mode {
 
 typedef struct wsland_window_handle {
     char* (*fetch_title)(struct wsland_window *window);
-    bool* (*fetch_unmanaged)(struct wsland_window *window);
     struct wlr_box* (*fetch_geometry)(struct wsland_window *window);
     struct wlr_surface* (*fetch_surface)(struct wsland_window *window);
     struct wsland_window* (*fetch_parent)(struct wsland_window *window);
@@ -148,13 +147,14 @@ typedef struct wsland_server {
     } move;
 
     struct {
-        struct wlr_surface *surface;
         struct wlr_buffer *buffer;
+        struct wlr_surface *surface;
         int s_hotspot_x, s_hotspot_y;
-        int hotspot_x, hotspot_y;
-        bool restore;
+        int b_hotspot_x, b_hotspot_y;
         bool dirty;
-    } cache_cursor;
+
+        struct wl_listener destroy;
+    } wsland_cursor;
 
     struct {
         struct wl_listener new_output;

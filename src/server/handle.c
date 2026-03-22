@@ -1,5 +1,8 @@
 #include <unistd.h>
 #include <linux/input-event-codes.h>
+
+#include <wlr/render/allocator.h>
+#include <wlr/render/swapchain.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
@@ -54,10 +57,9 @@ static void output_frame(struct wl_listener *listener, void *data) {
 
     pixman_region32_copy(&output->pending_commit_damage, &output->scene_output->pending_commit_damage);
     pixman_region32_translate(&output->pending_commit_damage, output->scene_output->x, output->scene_output->y);
-    if (wlr_scene_output_commit(output->scene_output, NULL)) {
-        if (pixman_region32_not_empty(&output->pending_commit_damage)) {
-            wl_signal_emit(&output->server->events.wsland_window_frame, output);
-        }
+    if (pixman_region32_not_empty(&output->pending_commit_damage)) {
+        wl_signal_emit(&output->server->events.wsland_window_frame, output);
+        pixman_region32_clear(&output->scene_output->pending_commit_damage);
     }
 
     struct timespec now;
@@ -245,13 +247,12 @@ static void begin_window_interactive(wsland_window *window, wsland_cursor_mode m
     server->move.mode = mode;
 
     if (mode == WSLAND_CURSOR_MOVE) {
-        server->cache_cursor.restore = true;
-        server->cache_cursor.s_hotspot_x = server->cache_cursor.hotspot_x;
-        server->cache_cursor.s_hotspot_y = server->cache_cursor.hotspot_y;
-        wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, "move");
-
         server->grab.x = server->cursor->x - window->tree->node.x;
         server->grab.y = server->cursor->y - window->tree->node.y;
+
+        server->wsland_cursor.s_hotspot_x = server->wsland_cursor.b_hotspot_x;
+        server->wsland_cursor.s_hotspot_y = server->wsland_cursor.b_hotspot_y;
+        wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, "move");
     }
     else {
         if (edges == WLR_EDGE_NONE) {
@@ -267,15 +268,11 @@ static void begin_window_interactive(wsland_window *window, wsland_cursor_mode m
             else {
                 edges |= WLR_EDGE_BOTTOM;
             }
-
-            server->cache_cursor.restore = true;
-            server->cache_cursor.s_hotspot_x = server->cache_cursor.hotspot_x;
-            server->cache_cursor.s_hotspot_y = server->cache_cursor.hotspot_y;
-            wlr_cursor_set_xcursor(
-                server->cursor, server->cursor_manager,
-                wlr_xcursor_get_resize_name(edges)
-            );
         }
+
+        server->wsland_cursor.s_hotspot_x = server->wsland_cursor.b_hotspot_x;
+        server->wsland_cursor.s_hotspot_y = server->wsland_cursor.b_hotspot_y;
+        wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, wlr_xcursor_get_resize_name(edges));
 
         struct wlr_box *geo_box = window->handle->fetch_geometry(window);
 
@@ -318,20 +315,17 @@ static wsland_window* desktop_toplevel_at(
 }
 
 static void reset_server_cursor(wsland_server *server) {
-    if (server->cache_cursor.restore) {
-        server->cache_cursor.restore = false;
-
-        if (server->cache_cursor.surface) {
+    if (server->move.mode != WSLAND_CURSOR_PASSTHROUGH) {
+        if (server->wsland_cursor.surface && server->wsland_cursor.surface->mapped) {
             wlr_cursor_set_surface(
-                server->cursor,
-                server->cache_cursor.surface,
-                server->cache_cursor.s_hotspot_x,
-                server->cache_cursor.s_hotspot_y
+                server->cursor, server->wsland_cursor.surface,
+                server->wsland_cursor.s_hotspot_x, server->wsland_cursor.s_hotspot_y
             );
         } else {
             wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, "default");
         }
     }
+
     server->move.mode = WSLAND_CURSOR_PASSTHROUGH;
     server->grab.window = NULL;
 }
@@ -512,11 +506,14 @@ static void server_cursor_frame(struct wl_listener *listener, void *data) {
     wl_signal_emit(&server->events.wsland_cursor_frame, server);
 }
 
-static void wsland_cursor_destroy(struct wl_listener *listener, void *data) {
-    wsland_server *server = wl_container_of(listener, server, events.wsland_cursor_destroy);
+static void cursor_surface_destroy(struct wl_listener *listener, void *user_data) {
+    wsland_server *server = wl_container_of(listener, server, wsland_cursor.destroy);
 
-    server->cache_cursor.surface = NULL;
-    wl_list_remove(&server->events.wsland_cursor_destroy.link);
+    if (user_data == server->wsland_cursor.surface) {
+        wl_list_remove(&server->wsland_cursor.destroy.link);
+        wl_list_init(&server->wsland_cursor.destroy.link);
+        server->wsland_cursor.surface = NULL;
+    }
 }
 
 static void seat_request_cursor(struct wl_listener *listener, void *data) {
@@ -525,20 +522,19 @@ static void seat_request_cursor(struct wl_listener *listener, void *data) {
 
     struct wlr_seat_client *focused_client = server->seat->pointer_state.focused_client;
     if (focused_client == event->seat_client) {
-        wlr_cursor_set_surface(server->cursor, event->surface, event->hotspot_x, event->hotspot_y);
-
-        if (event->surface) {
-            if (server->cache_cursor.surface) {
-                server->cache_cursor.surface = NULL;
-                wl_list_remove(&server->events.wsland_cursor_destroy.link);
-            }
-
-            server->cache_cursor.surface = event->surface;
-            server->cache_cursor.s_hotspot_x = event->hotspot_x;
-            server->cache_cursor.s_hotspot_y = event->hotspot_y;
-
-            LISTEN(&event->surface->events.destroy, &server->events.wsland_cursor_destroy, wsland_cursor_destroy);
+        if (server->wsland_cursor.surface) {
+            wl_list_remove(&server->wsland_cursor.destroy.link);
+            wl_list_init(&server->wsland_cursor.destroy.link);
         }
+
+        if (event->surface && event->surface != server->wsland_cursor.surface) {
+            server->wsland_cursor.surface = event->surface;
+            server->wsland_cursor.s_hotspot_x = event->hotspot_x;
+            server->wsland_cursor.s_hotspot_y = event->hotspot_y;
+            LISTEN(&event->surface->events.destroy, &server->wsland_cursor.destroy, cursor_surface_destroy);
+        }
+
+        wlr_cursor_set_surface(server->cursor, event->surface, event->hotspot_x, event->hotspot_y);
     }
 }
 

@@ -70,10 +70,11 @@ static void window_center(wsland_window *window) {
 
         int pos_x = output->work_area.x + (output->work_area.width - bounds.width) / 2;
         int pos_y = output->work_area.y + (output->work_area.height - bounds.height) / 2;
+        wlr_scene_node_set_position(&window->tree->node, pos_x, pos_y);
+
         wlr_xwayland_surface_configure(
             window->xwayland, pos_x, pos_y, window->xwayland->width, window->xwayland->height
         );
-        wlr_scene_node_set_position(&window->tree->node, pos_x, pos_y);
     }
 }
 
@@ -105,9 +106,11 @@ static void window_maximize(wsland_window *window) {
                     window->before.width = output->work_area.width / 2;
                     window->before.height = output->work_area.height / 2;
                 }
-
                 wlr_scene_node_set_position(&window->tree->node, window->before.x, window->before.y);
-                wlr_xwayland_surface_configure(window->xwayland, window->before.x, window->before.y, window->before.width, window->before.height);
+
+                wlr_xwayland_surface_configure(
+                    window->xwayland, window->before.x, window->before.y, window->before.width, window->before.height
+                );
             } else {
                 window->before = (struct wlr_box){
                     window->tree->node.x,
@@ -115,9 +118,11 @@ static void window_maximize(wsland_window *window) {
                     window->xwayland->width,
                     window->xwayland->height,
                 };
-
                 wlr_scene_node_set_position(&window->tree->node, output->work_area.x, output->work_area.y);
-                wlr_xwayland_surface_configure(window->xwayland, output->work_area.x, output->work_area.y, output->work_area.width, output->work_area.height);
+
+                wlr_xwayland_surface_configure(
+                    window->xwayland, output->work_area.x, output->work_area.y, output->work_area.width, output->work_area.height
+                );
             }
             wlr_xwayland_surface_set_maximized(window->xwayland, !maximized, !maximized);
         }

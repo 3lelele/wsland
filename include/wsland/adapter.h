@@ -26,6 +26,7 @@ typedef struct wsland_window {
 
     struct wlr_box damage;
     struct wlr_buffer *buffer;
+    struct wlr_texture *texture;
     uint32_t resize_serial;
     bool buffer_opaque;
 
@@ -41,6 +42,7 @@ typedef struct wsland_window {
         struct wl_listener destroy;
         struct wl_listener associate;
         struct wl_listener dissociate;
+        struct wl_listener reposition;
         struct wl_listener new_popup;
 
         struct wl_listener request_move;
@@ -58,14 +60,6 @@ typedef struct wsland_window {
     wsland_server *server;
     wsland_window_handle *handle;
 } wsland_window;
-
-typedef struct wsland_cursor {
-    int width, height;
-    int hotspot_x, hotspot_y;
-    bool dirty;
-
-    void *data; uint32_t *format; size_t *stride;
-} wsland_cursor;
 
 
 void wsland_adapter_frame_for_peer(wsland_peer *peer, RDPGFX_FRAME_ACKNOWLEDGE_PDU frame_acknowledge);

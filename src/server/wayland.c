@@ -40,10 +40,9 @@ static wsland_output *fetch_output(wsland_window *window) {
     int pos_x = MAX(0, window->tree->node.x);
     int pos_y = MAX(0, window->tree->node.y);
 
-    if (window->wayland->toplevel->parent) {
-        struct wlr_scene_tree *parent_tree = window->wayland->toplevel->parent->base->data;
-        pos_x = MAX(0, window->tree->node.x);
-        pos_y = MAX(0, window->tree->node.y);
+    if (window->parent) {
+        pos_x = MAX(0, window->parent->current.x);
+        pos_y = MAX(0, window->parent->current.y);
     }
 
     struct wlr_output *wo = wlr_output_layout_output_at(window->server->output_layout, pos_x, pos_y);
@@ -286,7 +285,12 @@ static void popup_map(struct wl_listener *listener, void *data) {
 
     wsland_output *output = popup->handle->fetch_output(popup);
     if (output) {
-        wlr_xdg_popup_unconstrain_from_box(popup->wayland->popup, &output->work_area);
+        struct wlr_box box_space = {
+            .x = output->work_area.x - popup->parent->tree->node.x,
+            .y = output->work_area.y - popup->parent->tree->node.y,
+            .width = output->work_area.width, .height = output->work_area.height
+        };
+        wlr_xdg_popup_unconstrain_from_box(popup->wayland->popup, &box_space);
     }
     wl_list_insert(&popup->server->windows, &popup->server_link);
 }
@@ -297,10 +301,21 @@ static void xdg_popup_commit(struct wl_listener *listener, void *data) {
     if (popup->wayland->initial_commit) {
         wlr_xdg_surface_schedule_configure(popup->wayland);
     } else if (popup->wayland->surface->mapped) {
-        int pos_x = popup->parent->tree->node.x + popup->wayland->popup->current.geometry.x;
-        int pos_y = popup->parent->tree->node.y + popup->wayland->popup->current.geometry.y;
-        wlr_scene_node_set_position(&popup->tree->node, pos_x, pos_y);
+        wsland_output *output = popup->handle->fetch_output(popup);
+        if (output) {
+            int pos_x = popup->parent->tree->node.x + popup->wayland->popup->current.geometry.x;
+            int pos_y = popup->parent->tree->node.y + popup->wayland->popup->current.geometry.y;
+            wlr_scene_node_set_position(&popup->tree->node, pos_x, pos_y);
+        }
     }
+}
+
+static void xdg_popup_reposition(struct wl_listener *listener, void *data) {
+    wsland_window *popup = wl_container_of(listener, popup, events.reposition);
+
+    int pos_x = popup->parent->tree->node.x + popup->wayland->popup->current.geometry.x;
+    int pos_y = popup->parent->tree->node.y + popup->wayland->popup->current.geometry.y;
+    wlr_scene_node_set_position(&popup->tree->node, pos_x, pos_y);
 }
 
 static void popup_unmap(struct wl_listener *listener, void *data) {
@@ -319,6 +334,7 @@ static void xdg_popup_destroy(struct wl_listener *listener, void *data) {
     wl_list_remove(&popup->events.unmap.link);
     wl_list_remove(&popup->events.commit.link);
     wl_list_remove(&popup->events.new_popup.link);
+    wl_list_remove(&popup->events.reposition.link);
     wl_list_remove(&popup->events.destroy.link);
     free(popup);
 }
@@ -360,6 +376,7 @@ static void window_new_popup(struct wl_listener *listener, void *data) {
     LISTEN(&popup->base->surface->events.map, &window->events.map, popup_map);
     LISTEN(&popup->base->surface->events.unmap, &window->events.unmap, popup_unmap);
     LISTEN(&popup->base->surface->events.commit, &window->events.commit, xdg_popup_commit);
+    LISTEN(&popup->events.reposition, &window->events.reposition, xdg_popup_reposition);
     LISTEN(&popup->events.destroy, &window->events.destroy, xdg_popup_destroy);
 
     LISTEN(&popup->base->events.new_popup, &window->events.new_popup, window_new_popup);
