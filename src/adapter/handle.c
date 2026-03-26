@@ -592,9 +592,7 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
         if (!adapter->freerdp->peer || !(adapter->freerdp->peer->flags & WSLAND_PEER_OUTPUT_ENABLED)) {
             return;
         }
-        if (adapter->freerdp->peer->current_frame_id - adapter->freerdp->peer->acknowledged_frame_id >= 2) {
-            pixman_region32_copy(&output->frame_commit_damage, &output->pending_commit_damage);
-            output->frame_pending = true;
+        if (adapter->freerdp->peer->current_frame_id - adapter->freerdp->peer->acknowledged_frame_id > 2) {
             return;
         }
     }
@@ -615,8 +613,6 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
     }
 
     if (output->server->move.mode == WSLAND_CURSOR_MOVE) {
-        pixman_region32_copy(&output->frame_commit_damage, &output->pending_commit_damage);
-        output->frame_pending = true;
         goto release;
     }
 

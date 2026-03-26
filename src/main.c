@@ -48,7 +48,7 @@ static void wsland_signal_system_init(wsland_signal_system *signal) {
 }
 
 int main(int argc, char *argv[]) {
-    wlr_log_init(WLR_DEBUG, NULL);
+    wlr_log_init(WLR_INFO, NULL);
 
     wsland_config *config = wsland_config_create(argc, argv);
     if (!config) {

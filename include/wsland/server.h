@@ -86,7 +86,6 @@ typedef struct wsland_output {
     struct wsland_server *server;
     struct wlr_scene_output *scene_output;
     pixman_region32_t pending_commit_damage;
-    pixman_region32_t frame_commit_damage;
     struct wlr_box taskbar_area;
     struct wlr_box work_area;
 

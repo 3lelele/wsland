@@ -57,11 +57,16 @@ static void dispatch_window_focus(wsland_window *window) {
 static void output_frame(struct wl_listener *listener, void *data) {
     wsland_output *output = wl_container_of(listener, output, events.frame);
 
-    pixman_region32_copy(&output->pending_commit_damage, &output->scene_output->pending_commit_damage);
-    pixman_region32_translate(&output->pending_commit_damage, output->scene_output->x, output->scene_output->y);
+    pixman_region32_t damage;
+    pixman_region32_init(&damage);
+    pixman_region32_copy(&damage, &output->scene_output->pending_commit_damage);
+    pixman_region32_translate(&damage, output->scene_output->x, output->scene_output->y);
+    pixman_region32_union(&output->pending_commit_damage, &output->pending_commit_damage, &damage);
+    pixman_region32_clear(&output->scene_output->pending_commit_damage);
+    pixman_region32_fini(&damage);
+
     if (pixman_region32_not_empty(&output->pending_commit_damage)) {
         wl_signal_emit(&output->server->events.wsland_window_frame, output);
-        pixman_region32_clear(&output->scene_output->pending_commit_damage);
     }
 
     struct timespec now;

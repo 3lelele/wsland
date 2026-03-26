@@ -15,16 +15,6 @@
 
 void wsland_adapter_frame_for_peer(wsland_peer *peer, RDPGFX_FRAME_ACKNOWLEDGE_PDU frame_acknowledge) {
     peer->acknowledged_frame_id = frame_acknowledge.frameId;
-
-    wsland_output *output;
-    wl_list_for_each(output, &peer->freerdp->adapter->server->outputs, server_link) {
-        if (output->frame_pending) {
-            pixman_region32_copy(&output->scene_output->pending_commit_damage, &output->frame_commit_damage);
-            wlr_output_schedule_frame(&output->output);
-            pixman_region32_clear(&output->frame_commit_damage);
-            output->frame_pending = false;
-        }
-    }
 }
 
 void wsland_adapter_work_area_for_peer(wsland_peer *peer, struct wlr_box area) {
