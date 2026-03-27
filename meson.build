@@ -71,7 +71,7 @@ wlroots_project = subproject(
     ]
 )
 
-dep_wlroots = wlroots_project.get_variable('wlroots') # dependency('wlroots-0.18', version : '>=0.18.3', fallback: 'wlroots')
+dep_wlroots = dependency('wlroots-0.18', version : '>=0.19.3') # wlroots_project.get_variable('wlroots')
 dep_winpr = dependency('winpr2', version : '>=2.4.0')
 dep_freerdp = dependency('freerdp2', version : '>=2.4.0')
 dep_freerdp_server = dependency('freerdp-server2', version : '>=2.4.0')
