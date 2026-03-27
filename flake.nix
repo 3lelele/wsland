@@ -30,7 +30,7 @@
 
             buildInputs = with pkgs; [
               wslgFreerdpLib wslgApplistLib wayland wayland-protocols wayland-scanner pixman cairo
-              libxcb libxcb-wm libxkbcommon libdrm xwayland openssl
+              libxcb libxcb-wm libxkbcommon libdrm xwayland openssl wlroots_0_19
             ];
           };
       });
@@ -45,7 +45,7 @@
             packages = with pkgs; [
               pkg-config meson ninja
               wslgFreerdpLib wslgApplistLib wayland wayland-protocols wayland-scanner pixman cairo
-              libxcb libxcb-wm libxkbcommon libdrm xwayland openssl
+              libxcb libxcb-wm libxkbcommon libdrm xwayland openssl wlroots_0_19
             ];
 
             LD_LIBRARY_PATH = "${wslgFreerdpLib}/lib";
