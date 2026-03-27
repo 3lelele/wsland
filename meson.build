@@ -71,7 +71,7 @@ add_project_arguments(cc.get_supported_arguments([
 #    ]
 #)
 
-dep_wlroots = dependency('wlroots-0.18', version : '>=0.19.3') # wlroots_project.get_variable('wlroots')
+dep_wlroots = dependency('wlroots-0.19', version : '>=0.19.3') # wlroots_project.get_variable('wlroots')
 dep_winpr = dependency('winpr2', version : '>=2.4.0')
 dep_freerdp = dependency('freerdp2', version : '>=2.4.0')
 dep_freerdp_server = dependency('freerdp-server2', version : '>=2.4.0')
