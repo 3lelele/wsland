@@ -32,11 +32,13 @@ wsland_config* wsland_config_create(int argc, char *argv[]) {
     }
 
     { // parse envs
-        config->address = "0.0.0.0";
+        config->address = strdup("0.0.0.0");
         config->port = 3389;
+        config->socket_name = strdup("wayland-0");
 
         const char *address = getenv("WSLAND_ADDR");
         if (address) {
+            free(config->address);
             config->address = strdup(address);
         }
 
@@ -50,6 +52,17 @@ wsland_config* wsland_config_create(int argc, char *argv[]) {
             }
             config->port = port;
         }
+
+        const char *socket_name = getenv("WAYLAND_DISPLAY");
+        if (socket_name && strlen(socket_name) != 0) {
+            free(config->socket_name);
+            config->socket_name = strdup(socket_name);
+        }
+
+        const char *notify_socket = getenv("WSLGD_NOTIFY_SOCKET");
+        if (notify_socket && strlen(notify_socket) != 0) {
+            config->notify_socket = strdup(notify_socket);
+        }
     }
 
     return config;
@@ -60,6 +73,9 @@ create_failed:
 
 void wsland_config_destroy(wsland_config *config) {
     if (config) {
+        free(config->notify_socket);
+        free(config->socket_name);
+        free(config->address);
         free(config);
     }
 }

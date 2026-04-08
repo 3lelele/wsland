@@ -5,6 +5,8 @@ typedef struct wsland_config {
     char *command;
     char *address;
     int port;
+    char *socket_name;
+    char *notify_socket;
 } wsland_config;
 
 wsland_config *wsland_config_create(int argc, char *argv[]);

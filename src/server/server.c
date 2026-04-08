@@ -1,5 +1,10 @@
 #include <assert.h>
+#include <errno.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 #include <wlr/backend/headless.h>
 #include <wlr/render/allocator.h>
@@ -34,6 +39,28 @@ const struct wlr_pointer_impl wsland_pointer_impl = {
 const struct wlr_keyboard_impl wsland_keyboard_impl = {
     .name = "wsland-keyboard",
 };
+
+static void notify_wslgd_ready(wsland_server *server) {
+    if (!server->config->notify_socket) {
+        return;
+    }
+
+    struct sockaddr_un address = {0};
+    address.sun_family = AF_UNIX;
+    strncpy(address.sun_path, server->config->notify_socket, sizeof(address.sun_path) - 1);
+
+    int fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0);
+    if (fd < 0) {
+        wsland_log(SERVER, ERROR, "failed to create notify socket: %s", strerror(errno));
+        return;
+    }
+
+    if (connect(fd, (const struct sockaddr *)&address, sizeof(address)) < 0) {
+        wsland_log(SERVER, ERROR, "failed to notify WSLGd ready state: %s", strerror(errno));
+    }
+
+    close(fd);
+}
 
 wsland_server *wsland_server_create(wsland_config *config) {
     wsland_server *server = calloc(1, sizeof(*server));
@@ -238,10 +265,18 @@ wsland_server *wsland_server_create(wsland_config *config) {
         xwayland_event_init(server);
     }
 
-    server->socket_name = wl_display_add_socket_auto(server->display);
-    if (!server->socket_name) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wl_display_add_socket_auto");
-        goto create_failed;
+    if (config->socket_name) {
+        if (wl_display_add_socket(server->display, config->socket_name) < 0) {
+            wsland_log(SERVER, ERROR, "failed to invoke wl_display_add_socket [%s]", config->socket_name);
+            goto create_failed;
+        }
+        server->socket_name = config->socket_name;
+    } else {
+        server->socket_name = wl_display_add_socket_auto(server->display);
+        if (!server->socket_name) {
+            wsland_log(SERVER, ERROR,  "failed to invoke wl_display_add_socket_auto");
+            goto create_failed;
+        }
     }
 
     if (!wlr_backend_start(server->backend)) {
@@ -266,6 +301,7 @@ void wsland_server_running(wsland_server *server) {
     setenv("DISPLAY", server->xwayland->display_name, true);
     setenv("WAYLAND_DISPLAY", server->socket_name, true);
     wsland_log(SERVER, INFO, "running wayland compositor [ DISPLAY=%s, WAYLAND_DISPLAY=%s ]", server->xwayland->display_name, server->socket_name);
+    notify_wslgd_ready(server);
     wl_display_run(server->display);
 }
 
