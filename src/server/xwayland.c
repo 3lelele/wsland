@@ -283,8 +283,6 @@ static void xwayland_unmap(struct wl_listener *listener, void *user_data) {
 
     wlr_scene_node_destroy(&window->tree->node);
     wl_signal_emit(&window->server->events.wsland_window_destroy, window);
-    wl_list_remove(&window->parent_link);
-    wl_list_remove(&window->server_link);
 }
 
 static void xwayland_associate(struct wl_listener *listener, void *user_data) {
@@ -344,6 +342,8 @@ static void xwayland_destroy(struct wl_listener *listener, void *user_data) {
     wl_list_remove(&window->events.associate.link);
     wl_list_remove(&window->events.set_hints.link);
     wl_list_remove(&window->events.destroy.link);
+    wl_list_remove(&window->parent_link);
+    wl_list_remove(&window->server_link);
     wl_list_remove(&window->children);
     free(window);
 }
