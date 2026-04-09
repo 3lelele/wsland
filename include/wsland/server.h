@@ -193,7 +193,7 @@ void wayland_event_init(wsland_server *server);
 void xwayland_event_init(wsland_server *server);
 wsland_server_handle *wsland_server_handle_init(wsland_server *server);
 
-wsland_output *wsland_output_create(wsland_server *server, int width, int height);
+wsland_output *wsland_output_create(wsland_server *server, int x, int y, int width, int height, bool primary);
 void output_update_refresh(wsland_output *output, int32_t refresh);
 bool wlr_output_is_wsland(struct wlr_output *wlr_output);
 

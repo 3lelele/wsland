@@ -84,14 +84,19 @@ void wsland_adapter_create_output_for_peer(wsland_peer *peer, rdpMonitor *monito
     mode.preferred = monitor->is_primary;
     mode.refresh = WSLAND_DEFAULT_REFRESH;
 
-    wsland_output *output = wsland_output_create(server, monitor->width, monitor->height);
+    wsland_output *output = wsland_output_create(
+        server,
+        monitor->x,
+        monitor->y,
+        monitor->width,
+        monitor->height,
+        monitor->is_primary
+    );
     if (!output) {
         wsland_log(ADAPTER, ERROR, "failed to invoke wsland_output_init");
         return;
     }
 
-    output->primary = monitor->is_primary;
-    output->monitor = (struct wlr_box){monitor->x, monitor->y, monitor->width, monitor->height};
     wl_list_insert(&peer->outputs, &output->peer_link);
     wsland_trace(ADAPTER, INFO, "Created output: pos=%d,%d size=%ux%u primary=%d",
         monitor->x, monitor->y, monitor->width, monitor->height, monitor->is_primary);

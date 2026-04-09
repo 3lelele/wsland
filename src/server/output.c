@@ -127,12 +127,15 @@ bool wlr_output_is_wsland(struct wlr_output *wlr_output) {
     return wlr_output->impl == &wsland_output_impl;
 }
 
-wsland_output *wsland_output_create(wsland_server *server, int width, int height) {
+wsland_output *wsland_output_create(wsland_server *server, int x, int y, int width, int height, bool primary) {
     wsland_output *output = calloc(1, sizeof(*output));
     if (!output) {
         wsland_log(SERVER, ERROR, "failed to allocate wsland_output");
         return NULL;
     }
+
+    output->primary = primary;
+    output->monitor = (struct wlr_box){ x, y, width, height };
 
     struct wlr_output_state state;
     wlr_output_state_init(&state);
