@@ -19,7 +19,7 @@
 
 
 static char* fetch_title(wsland_window *window) {
-    if (window->type == TOPLEVEL) {
+    if (window->type == TOPLEVEL && !window->parent) {
         return window->wayland->toplevel->title;
     }
     return NULL;
@@ -182,7 +182,7 @@ static bool window_grab_cannot(wsland_window *window) {
 }
 
 static bool window_click_cannot(wsland_window *window) {
-    return window->type == POPUP || window->wayland->toplevel->current.fullscreen;
+    return window->type == POPUP || window->wayland->toplevel->current.maximized || window->wayland->toplevel->current.fullscreen;
 }
 
 static bool window_resize_cannot(wsland_window *window) {

@@ -13,7 +13,10 @@
 
 
 static char* fetch_title(wsland_window *window) {
-    return window->xwayland->title;
+    if (window->type == XWAYLAND && !window->parent) {
+        return window->xwayland->title;
+    }
+    return NULL;
 }
 
 static wsland_window* fetch_parent(wsland_window *window) {
@@ -153,7 +156,7 @@ static bool window_grab_cannot(wsland_window *window) {
 }
 
 static bool window_click_cannot(wsland_window *window) {
-    return window->type == POPUP || window->xwayland->fullscreen;
+    return window->type == POPUP || window->xwayland->fullscreen || (window->xwayland->maximized_horz && window->xwayland->maximized_vert);
 }
 
 static bool window_resize_cannot(wsland_window *window) {
