@@ -191,6 +191,7 @@ static void collect_detection(struct wlr_scene_buffer *scene_buffer, int sx, int
 static void wsland_window_update(struct detection_data *data) {
     WINDOW_ORDER_INFO window_order_info = {0};
     WINDOW_STATE_ORDER window_state_order = {0};
+    const char *update_reason = "none";
 
     window_order_info.windowId = data->window->window_id;
     window_order_info.fieldFlags = WINDOW_ORDER_TYPE_WINDOW;
@@ -222,12 +223,14 @@ static void wsland_window_update(struct detection_data *data) {
     if (data->parent) {
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_OWNER;
         window_state_order.ownerWindowId = data->window->parent_id;
+        update_reason = "parent";
     }
 
     if (data->offset) {
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_OFFSET;
         window_state_order.windowOffsetX = data->window->current.x;
         window_state_order.windowOffsetY = data->window->current.y;
+        update_reason = "offset";
     }
 
     if (data->resize) {
@@ -265,6 +268,7 @@ static void wsland_window_update(struct detection_data *data) {
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_VISIBILITY;
         window_state_order.numVisibilityRects = 1;
         window_state_order.visibilityRects = &window_vis;
+        update_reason = "resize";
     }
 
     RAIL_UNICODE_STRING rail_window_title = {0, NULL};
@@ -272,18 +276,26 @@ static void wsland_window_update(struct detection_data *data) {
         if (utf8_string_to_rail_string(data->window->title, &rail_window_title)) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TITLE;
             window_state_order.titleInfo = rail_window_title;
+            update_reason = "title";
         }
+    }
+
+    if (data->create) {
+        update_reason = "create";
     }
 
     wsland_trace(
         ADAPTER,
         INFO,
-        "Window %s: id=%u title=%s field_flags=0x%x owner=%u show=%u pos=%d,%d size=%dx%d client=%dx%d pending=%d,%d %dx%d",
+        "Window %s: id=%u reason=%s title=%s field_flags=0x%x owner=%u style=0x%x exstyle=0x%x show=%u pos=%d,%d size=%dx%d client=%dx%d visible_offset=%d,%d client_offset=%d,%d client_delta=%d,%d rects=%u vis_rects=%u pending=%d,%d %dx%d",
         data->create ? "create" : "update",
+        update_reason,
         data->window->window_id,
         data->window->title ? data->window->title : "(null)",
         window_order_info.fieldFlags,
         window_state_order.ownerWindowId,
+        window_state_order.style,
+        window_state_order.extendedStyle,
         window_state_order.showState,
         window_state_order.windowOffsetX,
         window_state_order.windowOffsetY,
@@ -291,6 +303,14 @@ static void wsland_window_update(struct detection_data *data) {
         window_state_order.windowHeight,
         window_state_order.clientAreaWidth,
         window_state_order.clientAreaHeight,
+        window_state_order.visibleOffsetX,
+        window_state_order.visibleOffsetY,
+        window_state_order.clientOffsetX,
+        window_state_order.clientOffsetY,
+        window_state_order.windowClientDeltaX,
+        window_state_order.windowClientDeltaY,
+        window_state_order.numWindowRects,
+        window_state_order.numVisibilityRects,
         data->pending.x,
         data->pending.y,
         data->pending.width,
