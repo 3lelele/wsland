@@ -683,6 +683,8 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
             )) {
                 int alpha_size;
                 BYTE *alpha;
+                BYTE alpha_min = 0xFF;
+                BYTE alpha_max = 0x00;
                 {
                     int alpha_codec_header_size = 4;
                     if (window->buffer_opaque) { /* 8 = max of ALPHA_RLE_SEGMENT for single alpha value. */
@@ -701,6 +703,8 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
 
                     if (window->buffer_opaque) {
                         alpha[alpha_codec_header_size] = 0xFF; /* alpha value (opaque) */
+                        alpha_min = 0xFF;
+                        alpha_max = 0xFF;
                         if (bitmap_size < 0xFF) {
                             alpha[alpha_codec_header_size + 1] = (BYTE)bitmap_size;
                             alpha_size = alpha_codec_header_size + 2; /* alpha value + size in byte. */
@@ -726,6 +730,12 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
 
                             for (int j = 0; j < window->damage.width; j++, src_alpha_pixel += damage_bpp, dst_alpha_pixel++) {
                                 *dst_alpha_pixel = *src_alpha_pixel;
+                                if (*dst_alpha_pixel < alpha_min) {
+                                    alpha_min = *dst_alpha_pixel;
+                                }
+                                if (*dst_alpha_pixel > alpha_max) {
+                                    alpha_max = *dst_alpha_pixel;
+                                }
                             }
                         }
                     }
@@ -752,6 +762,9 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
                     start_frame.frameId, window->window_id, window->surface_id,
                     window->damage.x, window->damage.y, window->damage.width, window->damage.height,
                     alpha_size, window->buffer_opaque);
+                wsland_trace(ADAPTER, INFO,
+                    "Surface alpha range: frame_id=%u window_id=%u surface_id=%u min=%u max=%u",
+                    start_frame.frameId, window->window_id, window->surface_id, alpha_min, alpha_max);
 
                 surface_command.codecId = RDPGFX_CODECID_UNCOMPRESSED;
                 surface_command.length = damage_size;
