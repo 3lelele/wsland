@@ -258,7 +258,7 @@ static void wsland_window_update(struct detection_data *data) {
         }
     }
 
-    wsland_log(
+    wsland_trace(
         ADAPTER,
         INFO,
         "Window %s: id=%u title=%s field_flags=0x%x owner=%u show=%u pos=%d,%d size=%dx%d client=%dx%d pending=%d,%d %dx%d",
@@ -320,11 +320,11 @@ static void wsland_window_update(struct detection_data *data) {
         create_surface.pixelFormat = GFX_PIXEL_FORMAT_ARGB_8888;
         if (gfx_ctx->CreateSurface(gfx_ctx, &create_surface) == 0) {
             data->window->surface_id = create_surface.surfaceId;
-            wsland_log(ADAPTER, INFO, "Surface created: window_id=%u surface_id=%u size=%dx%d",
+            wsland_trace(ADAPTER, INFO, "Surface created: window_id=%u surface_id=%u size=%dx%d",
                 data->window->window_id, data->window->surface_id,
                 data->window->current.width, data->window->current.height);
         } else {
-            wsland_log(ADAPTER, ERROR, "CreateSurface failed: window_id=%u surface_id=%u size=%dx%d",
+            wsland_trace(ADAPTER, ERROR, "CreateSurface failed: window_id=%u surface_id=%u size=%dx%d",
                 data->window->window_id, create_surface.surfaceId,
                 data->window->current.width, data->window->current.height);
         }
@@ -339,12 +339,12 @@ static void wsland_window_update(struct detection_data *data) {
         if (gfx_ctx->MapSurfaceToScaledWindow(gfx_ctx, &map_surface_to_window) == 0) {
             data->window->scale_w = 100;
             data->window->scale_h = 100;
-            wsland_log(ADAPTER, INFO, "Surface mapped: window_id=%u surface_id=%u mapped=%dx%d target=%dx%d",
+            wsland_trace(ADAPTER, INFO, "Surface mapped: window_id=%u surface_id=%u mapped=%dx%d target=%dx%d",
                 data->window->window_id, data->window->surface_id,
                 map_surface_to_window.mappedWidth, map_surface_to_window.mappedHeight,
                 map_surface_to_window.targetWidth, map_surface_to_window.targetHeight);
         } else {
-            wsland_log(ADAPTER, ERROR, "MapSurfaceToScaledWindow failed: window_id=%u surface_id=%u",
+            wsland_trace(ADAPTER, ERROR, "MapSurfaceToScaledWindow failed: window_id=%u surface_id=%u",
                 data->window->window_id, data->window->surface_id);
         }
 
@@ -352,7 +352,7 @@ static void wsland_window_update(struct detection_data *data) {
             RDPGFX_DELETE_SURFACE_PDU deleteSurface = {0};
             deleteSurface.surfaceId = (uint16_t)prev_surface_id;
             gfx_ctx->DeleteSurface(gfx_ctx, &deleteSurface);
-            wsland_log(ADAPTER, INFO, "Surface deleted after resize: window_id=%u previous_surface_id=%u",
+            wsland_trace(ADAPTER, INFO, "Surface deleted after resize: window_id=%u previous_surface_id=%u",
                 data->window->window_id, prev_surface_id);
         }
     }
@@ -631,7 +631,7 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
             return;
         }
         if (adapter->freerdp->peer->current_frame_id - adapter->freerdp->peer->acknowledged_frame_id > 2) {
-            wsland_log(ADAPTER, INFO, "Skipping frame: current=%u acknowledged=%u backlog=%u",
+            wsland_trace(ADAPTER, INFO, "Skipping frame: current=%u acknowledged=%u backlog=%u",
                 adapter->freerdp->peer->current_frame_id,
                 adapter->freerdp->peer->acknowledged_frame_id,
                 adapter->freerdp->peer->current_frame_id - adapter->freerdp->peer->acknowledged_frame_id);
@@ -662,7 +662,7 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
         RDPGFX_START_FRAME_PDU start_frame = {0};
         start_frame.frameId = ++adapter->freerdp->peer->current_frame_id;
         gfx_ctx->StartFrame(gfx_ctx, &start_frame);
-        wsland_log(ADAPTER, INFO, "Start frame: frame_id=%u windows=%zu",
+        wsland_trace(ADAPTER, INFO, "Start frame: frame_id=%u windows=%zu",
             start_frame.frameId, frame_nodes.size / sizeof(struct frame_node));
 
         struct frame_node *node;
@@ -747,7 +747,7 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
                 surface_command.length = alpha_size;
                 surface_command.data = &alpha[0];
                 gfx_ctx->SurfaceCommand(gfx_ctx, &surface_command);
-                wsland_log(ADAPTER, INFO,
+                wsland_trace(ADAPTER, INFO,
                     "Surface command alpha: frame_id=%u window_id=%u surface_id=%u damage=%d,%d %dx%d bytes=%d opaque=%d",
                     start_frame.frameId, window->window_id, window->surface_id,
                     window->damage.x, window->damage.y, window->damage.width, window->damage.height,
@@ -757,7 +757,7 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
                 surface_command.length = damage_size;
                 surface_command.data = &data[0];
                 gfx_ctx->SurfaceCommand(gfx_ctx, &surface_command);
-                wsland_log(ADAPTER, INFO,
+                wsland_trace(ADAPTER, INFO,
                     "Surface command pixels: frame_id=%u window_id=%u surface_id=%u damage=%d,%d %dx%d bytes=%d",
                     start_frame.frameId, window->window_id, window->surface_id,
                     window->damage.x, window->damage.y, window->damage.width, window->damage.height,
@@ -770,7 +770,7 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
 
         RDPGFX_END_FRAME_PDU endFrame = { .frameId = start_frame.frameId };
         gfx_ctx->EndFrame(gfx_ctx, &endFrame);
-        wsland_log(ADAPTER, INFO, "End frame: frame_id=%u", endFrame.frameId);
+        wsland_trace(ADAPTER, INFO, "End frame: frame_id=%u", endFrame.frameId);
 
         pixman_region32_clear(&output->pending_commit_damage);
     }

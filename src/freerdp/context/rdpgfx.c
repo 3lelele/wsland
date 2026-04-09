@@ -32,45 +32,45 @@ static UINT rdpgfx_client_caps_advertise(RdpgfxServerContext *context, const RDP
     wsland_peer *peer = context->custom;
     RdpgfxServerContext *gfx_ctx = peer->ctx_server_rdpgfx;
 
-    wsland_log(FREERDP, INFO, "RDPGFX caps advertise: count=%u", capsAdvertise->capsSetCount);
+    wsland_trace(FREERDP, INFO, "RDPGFX caps advertise: count=%u", capsAdvertise->capsSetCount);
     for (int i = 0; i < capsAdvertise->capsSetCount; i++) {
         RDPGFX_CAPSET *capsSet = &(capsAdvertise->capsSets[i]);
         const char *version_name = rdpgfx_caps_version_name(capsSet->version);
 
-        wsland_log(FREERDP, INFO, "RDPGFX caps[%d]: version=%u length=%u flags=0x%x",
+        wsland_trace(FREERDP, INFO, "RDPGFX caps[%d]: version=%u length=%u flags=0x%x",
             i, capsSet->version, capsSet->length, capsSet->flags);
         if (version_name) {
-            wsland_log(FREERDP, INFO, "RDPGFX caps[%d] version_name=%s", i, version_name);
+            wsland_trace(FREERDP, INFO, "RDPGFX caps[%d] version_name=%s", i, version_name);
         } else {
-            wsland_log(FREERDP, ERROR, "RDPGFX caps[%d] version_name=UNKNOWN(%u)", i, capsSet->version);
+            wsland_trace(FREERDP, ERROR, "RDPGFX caps[%d] version_name=UNKNOWN(%u)", i, capsSet->version);
         }
 
         if (capsSet->flags & RDPGFX_CAPS_FLAG_THINCLIENT) {
-            wsland_log(FREERDP, INFO, "RDPGFX caps[%d] flag=THINCLIENT", i);
+            wsland_trace(FREERDP, INFO, "RDPGFX caps[%d] flag=THINCLIENT", i);
         }
         if (capsSet->flags & RDPGFX_CAPS_FLAG_SMALL_CACHE) {
-            wsland_log(FREERDP, INFO, "RDPGFX caps[%d] flag=SMALL_CACHE", i);
+            wsland_trace(FREERDP, INFO, "RDPGFX caps[%d] flag=SMALL_CACHE", i);
         }
         if (capsSet->flags & RDPGFX_CAPS_FLAG_AVC420_ENABLED) {
-            wsland_log(FREERDP, INFO, "RDPGFX caps[%d] flag=AVC420_ENABLED", i);
+            wsland_trace(FREERDP, INFO, "RDPGFX caps[%d] flag=AVC420_ENABLED", i);
         }
         if (capsSet->flags & RDPGFX_CAPS_FLAG_AVC_DISABLED) {
-            wsland_log(FREERDP, INFO, "RDPGFX caps[%d] flag=AVC_DISABLED", i);
+            wsland_trace(FREERDP, INFO, "RDPGFX caps[%d] flag=AVC_DISABLED", i);
         }
         if (capsSet->flags & RDPGFX_CAPS_FLAG_AVC_THINCLIENT) {
-            wsland_log(FREERDP, INFO, "RDPGFX caps[%d] flag=AVC_THINCLIENT", i);
+            wsland_trace(FREERDP, INFO, "RDPGFX caps[%d] flag=AVC_THINCLIENT", i);
         }
     }
 
     RDPGFX_CAPS_CONFIRM_PDU capsConfirm = {0};
 
     capsConfirm.capsSet = capsAdvertise->capsSets; /* TODO: choose right one.*/
-    wsland_log(FREERDP, INFO, "RDPGFX caps confirm: version=%u flags=0x%x",
+    wsland_trace(FREERDP, INFO, "RDPGFX caps confirm: version=%u flags=0x%x",
         capsConfirm.capsSet->version, capsConfirm.capsSet->flags);
     gfx_ctx->CapsConfirm(gfx_ctx, &capsConfirm);
 
     peer->activation_graphics_completed = TRUE;
-    wsland_log(FREERDP, INFO, "RDPGFX activation marked complete");
+    wsland_trace(FREERDP, INFO, "RDPGFX activation marked complete");
     return CHANNEL_RC_OK;
 }
 
@@ -83,7 +83,7 @@ static UINT rdpgfx_client_cache_import_offer(RdpgfxServerContext *context, const
 
 static UINT rdpgfx_client_frame_acknowledge(RdpgfxServerContext *context, const RDPGFX_FRAME_ACKNOWLEDGE_PDU *frameAcknowledge) {
     wsland_peer *peer = context->custom;
-    wsland_log(FREERDP, INFO, "RDPGFX frame ack: frame_id=%u current=%u acknowledged=%u",
+    wsland_trace(FREERDP, INFO, "RDPGFX frame ack: frame_id=%u current=%u acknowledged=%u",
         frameAcknowledge->frameId, peer->current_frame_id, peer->acknowledged_frame_id);
     DISPATCH(context, frame_acknowledge, frameAcknowledge, peer->handle->rdpgfx_frame_acknowledge);
     return CHANNEL_RC_OK;

@@ -81,6 +81,11 @@ static void window_center(wsland_window *window) {
         wlr_xwayland_surface_configure(
             window->xwayland, pos_x, pos_y, window->xwayland->width, window->xwayland->height
         );
+        wsland_trace(SERVER, INFO, "XWayland center: title=%s output=%d,%d %dx%d work=%d,%d %dx%d bounds=%dx%d pos=%d,%d size=%dx%d",
+            window->xwayland->title ? window->xwayland->title : "(null)",
+            output->monitor.x, output->monitor.y, output->monitor.width, output->monitor.height,
+            output->work_area.x, output->work_area.y, output->work_area.width, output->work_area.height,
+            bounds.width, bounds.height, pos_x, pos_y, window->xwayland->width, window->xwayland->height);
     }
 }
 
@@ -173,6 +178,11 @@ static void unmanaged_map(struct wl_listener *listener, void *data) {
         pos_y += (unmanaged->parent->current.y - unmanaged->xwayland->parent->y);
     }
     wlr_scene_node_set_position(&unmanaged->tree->node, pos_x, pos_y);
+    wsland_trace(SERVER, INFO, "XWayland unmanaged map: title=%s parent=%p pos=%d,%d size=%dx%d override_redirect=%d",
+        unmanaged->xwayland->title ? unmanaged->xwayland->title : "(null)",
+        (void *)unmanaged->parent,
+        pos_x, pos_y, unmanaged->xwayland->width, unmanaged->xwayland->height,
+        unmanaged->xwayland->override_redirect);
     wl_list_insert(&unmanaged->server->windows, &unmanaged->server_link);
 }
 
@@ -226,6 +236,13 @@ static void xwayland_map(struct wl_listener *listener, void *data) {
     window->tree = wlr_scene_subsurface_tree_create(&window->server->scene->tree, window->xwayland->surface);
     window->tree->node.data = window->xwayland->surface->data = window;
     window_center(window);
+    wsland_trace(SERVER, INFO, "XWayland map: title=%s parent=%p pos=%d,%d size=%dx%d modal=%d override_redirect=%d",
+        window->xwayland->title ? window->xwayland->title : "(null)",
+        (void *)window->parent,
+        window->tree->node.x, window->tree->node.y,
+        window->xwayland->width, window->xwayland->height,
+        window->xwayland->modal,
+        window->xwayland->override_redirect);
 
     if (window->parent) {
         wl_list_insert(&window->parent->children, &window->parent_link);
@@ -236,6 +253,11 @@ static void xwayland_map(struct wl_listener *listener, void *data) {
 
 static void xwayland_unmap(struct wl_listener *listener, void *data) {
     wsland_window *window = wl_container_of(listener, window, events.unmap);
+    wsland_trace(SERVER, INFO, "XWayland unmap: title=%s window_id=%u pos=%d,%d size=%dx%d",
+        window->xwayland->title ? window->xwayland->title : "(null)",
+        window->window_id,
+        window->tree->node.x, window->tree->node.y,
+        window->xwayland->width, window->xwayland->height);
 
     wlr_scene_node_destroy(&window->tree->node);
     wl_signal_emit(&window->server->events.wsland_window_destroy, window);

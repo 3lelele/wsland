@@ -15,30 +15,38 @@
 
 void wsland_adapter_frame_for_peer(wsland_peer *peer, RDPGFX_FRAME_ACKNOWLEDGE_PDU frame_acknowledge) {
     peer->acknowledged_frame_id = frame_acknowledge.frameId;
-    wsland_log(ADAPTER, INFO, "Frame acknowledged: frame_id=%u current=%u",
+    wsland_trace(ADAPTER, INFO, "Frame acknowledged: frame_id=%u current=%u",
         peer->acknowledged_frame_id, peer->current_frame_id);
 }
 
 void wsland_adapter_work_area_for_peer(wsland_peer *peer, struct wlr_box area) {
     wsland_server *server = peer->freerdp->adapter->server;
+    wsland_trace(ADAPTER, INFO, "Work area update: pos=%d,%d size=%dx%d",
+        area.x, area.y, area.width, area.height);
 
     struct wlr_output *wo = wlr_output_layout_output_at(server->output_layout, area.x, area.y);
     if (wo) {
         wsland_output *output = wo->data;
         if (output) {
             output->work_area = area;
+            wsland_trace(ADAPTER, INFO, "Work area applied to output: monitor=%d,%d %dx%d",
+                output->monitor.x, output->monitor.y, output->monitor.width, output->monitor.height);
         }
     }
 }
 
 void wsland_adapter_taskbar_area_for_peer(wsland_peer *peer, struct wlr_box area) {
     wsland_server *server = peer->freerdp->adapter->server;
+    wsland_trace(ADAPTER, INFO, "Taskbar area update: pos=%d,%d size=%dx%d",
+        area.x, area.y, area.width, area.height);
 
     struct wlr_output *wo = wlr_output_layout_output_at(server->output_layout, area.x, area.y);
     if (wo) {
         wsland_output *output = wo->data;
         if (output) {
             output->taskbar_area = area;
+            wsland_trace(ADAPTER, INFO, "Taskbar area applied to output: monitor=%d,%d %dx%d",
+                output->monitor.x, output->monitor.y, output->monitor.width, output->monitor.height);
         }
     }
 }
@@ -85,7 +93,7 @@ void wsland_adapter_create_output_for_peer(wsland_peer *peer, rdpMonitor *monito
     output->primary = monitor->is_primary;
     output->monitor = (struct wlr_box){monitor->x, monitor->y, monitor->width, monitor->height};
     wl_list_insert(&peer->outputs, &output->peer_link);
-    wsland_log(ADAPTER, INFO, "Created output: pos=%d,%d size=%ux%u primary=%d",
+    wsland_trace(ADAPTER, INFO, "Created output: pos=%d,%d size=%ux%u primary=%d",
         monitor->x, monitor->y, monitor->width, monitor->height, monitor->is_primary);
 }
 

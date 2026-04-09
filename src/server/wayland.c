@@ -104,6 +104,11 @@ static void window_center(wsland_window *window) {
         int pos_x = output->work_area.x + (output->work_area.width - bounds.width) / 2;
         int pos_y = output->work_area.y + (output->work_area.height - bounds.height) / 2;
         wlr_scene_node_set_position(&window->tree->node, pos_x, pos_y);
+        wsland_trace(SERVER, INFO, "Wayland center: title=%s output=%d,%d %dx%d work=%d,%d %dx%d bounds=%dx%d pos=%d,%d",
+            window->wayland->toplevel->title ? window->wayland->toplevel->title : "(null)",
+            output->monitor.x, output->monitor.y, output->monitor.width, output->monitor.height,
+            output->work_area.x, output->work_area.y, output->work_area.width, output->work_area.height,
+            bounds.width, bounds.height, pos_x, pos_y);
     }
 }
 
@@ -197,6 +202,12 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
     window->parent = window->handle->fetch_parent(window);
     window->wayland->surface->data = window;
     window_center(window);
+    wsland_trace(SERVER, INFO, "Wayland map: title=%s parent=%p geometry=%dx%d scene_pos=%d,%d",
+        window->wayland->toplevel->title ? window->wayland->toplevel->title : "(null)",
+        (void *)window->parent,
+        window->wayland->toplevel->base->current.geometry.width,
+        window->wayland->toplevel->base->current.geometry.height,
+        window->tree->node.x, window->tree->node.y);
 
     if (window->parent) {
         wl_list_insert(&window->parent->children, &window->parent_link);
@@ -206,6 +217,11 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
 
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
     wsland_window *window = wl_container_of(listener, window, events.unmap);
+    wsland_trace(SERVER, INFO, "Wayland unmap: title=%s window_id=%u scene_pos=%d,%d current=%d,%d %dx%d",
+        window->wayland->toplevel->title ? window->wayland->toplevel->title : "(null)",
+        window->window_id,
+        window->tree->node.x, window->tree->node.y,
+        window->current.x, window->current.y, window->current.width, window->current.height);
 
     wl_list_remove(&window->parent_link);
     wl_list_remove(&window->server_link);
@@ -217,6 +233,8 @@ static void xdg_toplevel_commit(struct wl_listener *listener, void *data) {
     wsland_window *window = wl_container_of(listener, window, events.commit);
 
     if (window->wayland->initial_commit) {
+        wsland_trace(SERVER, INFO, "Wayland initial commit: title=%s forcing initial size 0x0",
+            window->wayland->toplevel->title ? window->wayland->toplevel->title : "(null)");
         wlr_xdg_toplevel_set_size(window->wayland->toplevel, 0, 0);
     }
 }

@@ -27,6 +27,8 @@ static void dispatch_window_focus(wsland_window *window) {
     struct wlr_seat *seat = server->seat;
     struct wlr_surface *prev_surface = seat->keyboard_state.focused_surface;
     struct wlr_surface *cur_surface = window->handle->fetch_surface(window);
+    wsland_trace(SERVER, INFO, "Focus dispatch: window=%p prev_surface=%p cur_surface=%p pos=%d,%d",
+        (void *)window, (void *)prev_surface, (void *)cur_surface, window->tree->node.x, window->tree->node.y);
     if (prev_surface == cur_surface) {
         return;
     }
