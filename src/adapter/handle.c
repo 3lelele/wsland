@@ -258,6 +258,28 @@ static void wsland_window_update(struct detection_data *data) {
         }
     }
 
+    wsland_log(
+        ADAPTER,
+        INFO,
+        "Window %s: id=%u title=%s field_flags=0x%x owner=%u show=%u pos=%d,%d size=%dx%d client=%dx%d pending=%d,%d %dx%d",
+        data->create ? "create" : "update",
+        data->window->window_id,
+        data->window->title ? data->window->title : "(null)",
+        window_order_info.fieldFlags,
+        window_state_order.ownerWindowId,
+        window_state_order.showState,
+        window_state_order.windowOffsetX,
+        window_state_order.windowOffsetY,
+        window_state_order.windowWidth,
+        window_state_order.windowHeight,
+        window_state_order.clientAreaWidth,
+        window_state_order.clientAreaHeight,
+        data->pending.x,
+        data->pending.y,
+        data->pending.width,
+        data->pending.height
+    );
+
     struct rdp_update *update = data->adapter->freerdp->peer->peer->update;
     update->BeginPaint(update->context);
     if (data->create) {
