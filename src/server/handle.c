@@ -96,7 +96,22 @@ static void server_new_output(struct wl_listener *listener, void *data) {
     wl_list_insert(&server->outputs, &output->server_link);
 
     output->scene_output = wlr_scene_output_create(server->scene, &output->output);
-    struct wlr_output_layout_output *layout_output = wlr_output_layout_add_auto(server->output_layout, &output->output);
+    struct wlr_output_layout_output *layout_output = wlr_output_layout_add(
+        server->output_layout,
+        &output->output,
+        output->monitor.x,
+        output->monitor.y
+    );
+    wsland_trace(
+        SERVER,
+        INFO,
+        "Bind output layout: name=%s monitor=%d,%d %dx%d",
+        output->output.name,
+        output->monitor.x,
+        output->monitor.y,
+        output->monitor.width,
+        output->monitor.height
+    );
     wlr_scene_output_layout_add_output(server->scene_layout, layout_output, output->scene_output);
 
     struct wlr_output_state state;
