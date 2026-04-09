@@ -176,6 +176,16 @@ static BOOL xf_peer_activate(freerdp_peer *rdp_peer) {
     wsland_peer *peer = (wsland_peer*)rdp_peer->context;
     rdpSettings *settings = rdp_peer->settings;
 
+    wsland_log(FREERDP, INFO,
+        "Activate settings: surface_commands=%d remote_app=%d gfx_pipeline=%d monitor_count=%u desktop=%ux%u gfxredir=%d",
+        settings->SurfaceCommandsEnabled,
+        settings->RemoteApplicationMode,
+        settings->SupportGraphicsPipeline,
+        settings->MonitorCount,
+        settings->DesktopWidth,
+        settings->DesktopHeight,
+        peer->freerdp->use_gfxredir);
+
     if (!settings->SurfaceCommandsEnabled) {
         wlr_log(WLR_ERROR, "freerdp client does not support SurfaceCommands");
         return FALSE;
@@ -212,11 +222,22 @@ static BOOL xf_peer_activate(freerdp_peer *rdp_peer) {
 
         for (uint32_t index = 0; index < settings->MonitorCount; ++index) {
             rdpMonitor monitor = settings->MonitorDefArray[index];
+            wsland_log(FREERDP, INFO,
+                "Monitor[%u]: pos=%d,%d size=%ux%u primary=%d scale=%u/%u",
+                index,
+                monitor.x,
+                monitor.y,
+                monitor.width,
+                monitor.height,
+                monitor.is_primary,
+                monitor.attributes.desktopScaleFactor,
+                monitor.attributes.deviceScaleFactor);
 
             wsland_adapter_create_output_for_peer(peer, &monitor);
         }
         wsland_adapter_create_keyboard_for_peer(peer, settings);
         peer->flags |= WSLAND_PEER_OUTPUT_ENABLED;
+        wsland_log(FREERDP, INFO, "Peer output enabled");
     }
 
     if (!rail_clipboard_init(peer)) {
