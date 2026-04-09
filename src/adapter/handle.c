@@ -432,7 +432,10 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
         char *title;
         if ((title = window->handle->fetch_title(window)) != NULL) {
             if (!window->title || strcmp(window->title, title) != 0) {
-                if (window->title) { free(window->title); }
+                if (window->title) {
+                    free(window->title);
+                    window->title = NULL;
+                }
 
                 window->title = strdup(title);
                 data.title = true;
@@ -573,6 +576,7 @@ static void wsland_window_destroy(struct wl_listener *listener, void *data) {
     }
     if (window->title) {
         free(window->title);
+        window->title = NULL;
     }
     window->window_id = 0;
 }

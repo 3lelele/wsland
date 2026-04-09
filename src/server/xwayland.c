@@ -27,16 +27,8 @@ static wsland_window* fetch_parent(wsland_window *window) {
 }
 
 static wsland_output *fetch_output(wsland_window *window) {
-    int pos_x = MAX(1, window->tree->node.x);
-    int pos_y = MAX(1, window->tree->node.y);
-
-    if (window->xwayland->parent) {
-        wsland_window *parent = window->xwayland->parent->data;
-        if (parent) {
-            pos_x = MAX(1, parent->tree->node.x);
-            pos_y = MAX(1, parent->tree->node.y);
-        }
-    }
+    int pos_x = MAX(1, window->xwayland->x);
+    int pos_y = MAX(1, window->xwayland->y);
 
     struct wlr_output *wo = wlr_output_layout_output_at(window->server->output_layout, pos_x, pos_y);
     if (wo) {
@@ -183,6 +175,22 @@ static void unmanaged_map(struct wl_listener *listener, void *user_data) {
 
         int pos_x = unmanaged->xwayland->x - unmanaged->parent->xwayland->x;
         int pos_y = unmanaged->xwayland->y - unmanaged->parent->xwayland->y;
+        wsland_output *output = unmanaged->handle->fetch_output(unmanaged);
+        if (output && (output->work_area.width != output->monitor.width || output->work_area.height != output->monitor.height)) {
+            int offset_x = unmanaged->xwayland->x + unmanaged->xwayland->width - (output->work_area.x + output->work_area.width);
+            int offset_y = unmanaged->xwayland->y + unmanaged->xwayland->height - (output->work_area.y + output->work_area.height);
+            offset_x = offset_x < 0 ? 0 : offset_x + 8;
+            offset_y = offset_y < 0 ? 0 : offset_y + 8;
+            pos_x -= offset_x;
+            pos_y -= offset_y;
+
+            wlr_xwayland_surface_configure(
+                unmanaged->xwayland,
+                unmanaged->xwayland->x - offset_x,
+                unmanaged->xwayland->y - offset_y,
+                unmanaged->xwayland->width, unmanaged->xwayland->height
+            );
+        }
         wlr_scene_node_set_position(&unmanaged->tree->node, pos_x, pos_y);
     }
 }
