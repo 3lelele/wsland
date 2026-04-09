@@ -722,22 +722,18 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
                         }
                     }
                     else {
-                        BYTE *alpha_bits = &data[0];
-
-                        for (int i = 0; i < window->damage.height; i++, alpha_bits += damage_stride) {
-                            BYTE *src_alpha_pixel = alpha_bits + 3; /* 3 = xxxA. */
+                        for (int i = 0; i < window->damage.height; i++) {
                             BYTE *dst_alpha_pixel = &alpha[alpha_codec_header_size + i * window->damage.width];
 
-                            for (int j = 0; j < window->damage.width; j++, src_alpha_pixel += damage_bpp, dst_alpha_pixel++) {
-                                *dst_alpha_pixel = *src_alpha_pixel;
-                                if (*dst_alpha_pixel < alpha_min) {
-                                    alpha_min = *dst_alpha_pixel;
-                                }
-                                if (*dst_alpha_pixel > alpha_max) {
-                                    alpha_max = *dst_alpha_pixel;
-                                }
+                            for (int j = 0; j < window->damage.width; j++, dst_alpha_pixel++) {
+                                /* Diagnostic override: force the alpha plane fully opaque to
+                                 * determine whether final presentation is blocked by alpha handling. */
+                                *dst_alpha_pixel = 0xFF;
                             }
                         }
+
+                        alpha_min = 0xFF;
+                        alpha_max = 0xFF;
                     }
                 }
 
