@@ -34,9 +34,8 @@
           };
       });
 
-      devShells = forAllSystems(system: let 
+      devShells = forAllSystems(system: let
         pkgs = import nixpkgs { inherit system; };
-
         wslg-applist-lib = wslg-applist.packages.${system}.wslg-applist;
         wslg-freerdp-lib = wslg-freerdp.packages.${system}.default;
       in {
@@ -44,7 +43,7 @@
             packages = with pkgs; [
               pkg-config meson ninja
               wslg-freerdp-lib wslg-applist-lib wayland wayland-protocols wayland-scanner pixman cairo
-              libinput libxcb libxcb-wm libxcb-errors libxkbcommon libdrm libxcursor xwayland openssl wlroots_0_19
+              libinput libxcb-wm libxcb-errors libxkbcommon libdrm libxcursor xwayland openssl wlroots_0_20
             ];
 
             LD_LIBRARY_PATH = "${wslg-freerdp-lib}/lib:${wslg-applist-lib}/lib";

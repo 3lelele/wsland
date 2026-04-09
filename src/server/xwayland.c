@@ -153,7 +153,7 @@ static bool window_grab_cannot(wsland_window *window) {
 }
 
 static bool window_click_cannot(wsland_window *window) {
-    return window->type == POPUP;
+    return window->type == POPUP || window->xwayland->fullscreen;
 }
 
 static bool window_resize_cannot(wsland_window *window) {
@@ -262,7 +262,8 @@ static void xwayland_map(struct wl_listener *listener, void *user_data) {
     wsland_window *window = wl_container_of(listener, window, events.map);
     window->parent = window->handle->fetch_parent(window);
 
-    window->tree = wlr_scene_subsurface_tree_create(&window->server->scene->tree, window->xwayland->surface);
+    window->tree = wlr_scene_tree_create(&window->server->scene->tree);
+    wlr_scene_surface_create(window->tree, window->xwayland->surface);
     window->tree->node.data = window->xwayland->surface->data = window;
     window_center(window);
 
@@ -270,12 +271,8 @@ static void xwayland_map(struct wl_listener *listener, void *user_data) {
         wl_list_insert(&window->parent->children, &window->parent_link);
     }
 
-    wsland_window *overlay;
-    if (!window_wants_floating(window) && (overlay = fetch_overlay_window(window->server))) {
-        wl_list_insert(overlay->server_link.next, &window->server_link);
-    } else {
-        wl_list_insert(&window->server->windows, &window->server_link);
-    }
+    wl_list_insert(&window->server->windows, &window->server_link);
+    window->server->zorder = true;
 }
 
 static void xwayland_unmap(struct wl_listener *listener, void *user_data) {
@@ -408,26 +405,8 @@ static wsland_window *create_xwayland_window(wsland_server *server, struct wlr_x
 
 static void xwayland_ready(struct wl_listener *listener, void *user_data) {
     wsland_server *server = wl_container_of(listener, server, events.xwayland_ready);
+
     wlr_xwayland_set_seat(server->xwayland, server->seat);
-
-    int num_current = 0;
-    int num_workareas = wl_list_length(&server->outputs);
-    struct wlr_box *workareas = malloc(num_workareas * sizeof(*workareas));
-    wsland_output *output;
-    wl_list_for_each(output, &server->outputs, server_link) {
-        workareas[num_current++] = output->monitor;
-    }
-    wlr_xwayland_set_workareas(server->xwayland, workareas, num_workareas);
-    free(workareas);
-
-    struct wlr_xcursor *xcursor;
-    if ((xcursor = wlr_xcursor_manager_get_xcursor(server->cursor_manager, "default", 1))) {
-        wlr_xwayland_set_cursor(
-            server->xwayland, xcursor->images[0]->buffer,
-            xcursor->images[0]->width * 4, xcursor->images[0]->width,
-            xcursor->images[0]->height, xcursor->images[0]->hotspot_x, xcursor->images[0]->hotspot_y
-        );
-    }
 }
 
 static void xwayland_new_toplevel(struct wl_listener *listener, void *user_data) {

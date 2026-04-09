@@ -1,13 +1,16 @@
 // ReSharper disable All
 #include <cairo.h>
 #include <unistd.h>
+#include <libinput.h>
 #include <linux/input-event-codes.h>
 
+#include <wlr/backend/libinput.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/swapchain.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_cursor_shape_v1.h>
+#include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_data_device.h>
@@ -330,7 +333,7 @@ static wsland_window* desktop_toplevel_at(
 }
 
 static void reset_server_cursor(wsland_server *server) {
-    if (server->move.mode != WSLAND_CURSOR_PASSTHROUGH) {
+    if (server->move.mode == WSLAND_CURSOR_MOVE || server->move.mode == WSLAND_CURSOR_RESIZE) {
         struct wlr_surface *surface = server->wsland_cursor.surface;
         bool non_xwayland = server->grab.window->type != XWAYLAND;
 
@@ -438,18 +441,22 @@ static void process_cursor_motion(wsland_server *server, uint32_t time) {
     );
     if (!window) {
         wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, "default");
+    } else if (window->type == XWAYLAND && server->move.mode == WSLAND_CURSOR_PASSTHROUGH) {
+        wlr_seat_pointer_notify_clear_focus(seat);
     }
+
+    if (!surface || surface != seat->pointer_state.focused_surface) {
+        wlr_seat_pointer_notify_clear_focus(seat);
+    }
+
     if (surface) {
-        wlr_seat_pointer_notify_motion(seat, time, sx, sy);
         wlr_seat_pointer_notify_enter(seat, surface, sx, sy);
-    }
-    else {
-        wlr_seat_pointer_clear_focus(seat);
+        wlr_seat_pointer_notify_motion(seat, time, sx, sy);
     }
 }
 
 static void server_cursor_motion(struct wl_listener *listener, void *data) {
-    // todo
+    wsland_log(SERVER, ERROR, "cursor motion need");
 }
 
 static void server_cursor_motion_absolute(struct wl_listener *listener, void *data) {
@@ -512,6 +519,8 @@ static void server_cursor_button(struct wl_listener *listener, void *data) {
     if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
         reset_server_cursor(server);
     } else {
+        server->move.mode = WSLAND_CURSOR_PRESSED;
+
         double sx, sy;
         struct wlr_surface *surface = NULL;
         wsland_window *window = desktop_toplevel_at(
@@ -581,16 +590,15 @@ static void seat_request_cursor(struct wl_listener *listener, void *user_data) {
     wsland_server *server = wl_container_of(listener, server, events.request_cursor);
     struct wlr_seat_pointer_request_set_cursor_event *event = user_data;
 
-    wsland_log(SERVER, ERROR, "set cursor");
-
     if (server->move.mode != WSLAND_CURSOR_PASSTHROUGH) {
         return;
     }
 
     if (event->seat_client == server->seat->pointer_state.focused_client) {
-        if (server->wsland_cursor.surface) {
+        if (server->wsland_cursor.surface && event->surface != server->wsland_cursor.surface) {
             wl_list_remove(&server->wsland_cursor.destroy.link);
             wl_list_init(&server->wsland_cursor.destroy.link);
+            server->wsland_cursor.surface = NULL;
         }
 
         if (event->surface && event->surface != server->wsland_cursor.surface) {
@@ -617,6 +625,46 @@ static void request_set_shape(struct wl_listener *listener, void *user_data) {
     }
 }
 
+typedef struct wsland_pointer_constraint {
+    struct wlr_pointer_constraint_v1 *constraint;
+    struct wl_listener destroy;
+
+    wsland_server *server;
+} wsland_pointer_constraint;
+
+static void cursor_warp_to_hint(wsland_server *server) {
+    double sx = server->active_constraint->current.cursor_hint.x;
+    double sy = server->active_constraint->current.cursor_hint.y;
+
+    wsland_window *window = server->active_constraint->surface->data;
+    if (window && server->active_constraint->current.cursor_hint.enabled) {
+        wlr_cursor_warp(server->cursor, NULL, sx + window->current.x, sy + window->current.y);
+        wlr_seat_pointer_warp(server->active_constraint->seat, sx, sy);
+    }
+}
+
+static void pointer_constraint_destroy(struct wl_listener *listener, void *user_data) {
+    wsland_pointer_constraint *pointer_constraint = wl_container_of(listener, pointer_constraint, destroy);
+
+    if (pointer_constraint->server->active_constraint == pointer_constraint->constraint) {
+        cursor_warp_to_hint(pointer_constraint->server);
+        pointer_constraint->server->active_constraint = NULL;
+    }
+
+    wl_list_remove(&pointer_constraint->destroy.link);
+    free(pointer_constraint);
+}
+
+static void new_constraint(struct wl_listener *listener, void *user_data) {
+    wsland_server *server = wl_container_of(listener, server, events.new_constraint);
+
+    wsland_pointer_constraint *pointer_constraint = calloc(1, sizeof(*pointer_constraint));
+    pointer_constraint->constraint = user_data;
+    pointer_constraint->server = server;
+
+    LISTEN(&pointer_constraint->constraint->events.destroy, &pointer_constraint->destroy, pointer_constraint_destroy);
+}
+
 static void seat_request_set_selection(struct wl_listener *listener, void *user_data) {
     wsland_server *server = wl_container_of(listener, server, events.request_set_selection);
     struct wlr_seat_request_set_selection_event *event = user_data;
@@ -637,6 +685,7 @@ wsland_server_handle wsland_server_handle_impl = {
     .new_virtual_pointer = server_new_virtual_pointer,
     .seat_request_cursor = seat_request_cursor,
     .request_set_shape = request_set_shape,
+    .new_constraint = new_constraint,
 
     .reset_server_cursor = reset_server_cursor,
     .dispatch_window_focus = dispatch_window_focus,

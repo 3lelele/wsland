@@ -4,6 +4,7 @@
 #include "wsland/server.h"
 #include "wsland/freerdp.h"
 
+#define WSLAND_BORDER_WIDTH 2
 #define RAIL_MARKER_WINDOW_ID  0xFFFFFFFE
 #define RAIL_DESKTOP_WINDOW_ID 0xFFFFFFFF
 

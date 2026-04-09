@@ -182,7 +182,7 @@ static bool window_grab_cannot(wsland_window *window) {
 }
 
 static bool window_click_cannot(wsland_window *window) {
-    return window->type == POPUP;
+    return window->type == POPUP || window->wayland->toplevel->current.fullscreen;
 }
 
 static bool window_resize_cannot(wsland_window *window) {
@@ -201,7 +201,9 @@ static void xdg_toplevel_map(struct wl_listener *listener, void *data) {
     if (window->parent) {
         wl_list_insert(&window->parent->children, &window->parent_link);
     }
+
     wl_list_insert(&window->server->windows, &window->server_link);
+    window->server->zorder = true;
 }
 
 static void xdg_toplevel_unmap(struct wl_listener *listener, void *data) {

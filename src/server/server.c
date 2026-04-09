@@ -1,5 +1,4 @@
 // ReSharper disable All
-#define GNU_SOURCE
 #include <assert.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -19,6 +18,7 @@
 #include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
 #include <wlr/types/wlr_relative_pointer_v1.h>
+#include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_cursor_shape_v1.h>
@@ -32,8 +32,6 @@
 #include <wlr/xwayland/xwayland.h>
 
 #include "wsland/server.h"
-
-#include "wlr/types/wlr_virtual_pointer_v1.h"
 #include "wsland/utils/log.h"
 
 const struct wlr_pointer_impl wsland_pointer_impl = {
@@ -210,7 +208,7 @@ wsland_server *wsland_server_create(wsland_config *config) {
     }
 
     server->virtual_pointer_manager = wlr_virtual_pointer_manager_v1_create(server->display);
-    if (!server->xdg_decoration_manager) {
+    if (!server->virtual_pointer_manager) {
         wsland_log(SERVER, ERROR,  "failed to invoke wlr_virtual_pointer_manager_v1_create");
         goto create_failed;
     }
@@ -243,10 +241,9 @@ wsland_server *wsland_server_create(wsland_config *config) {
         LISTEN(&server->cursor->events.motion, &server->events.cursor_motion, server->handle->cursor_motion);
         LISTEN(&server->cursor->events.motion_absolute, &server->events.cursor_motion_absolute, server->handle->cursor_motion_absolute);
 
-        // cursor shape event
+        // cursor event
+        LISTEN(&server->pointer_constraints->events.new_constraint, &server->events.new_constraint, server->handle->new_constraint);
         LISTEN(&server->cursor_shape_manager->events.request_set_shape, &server->events.request_set_shape, server->handle->request_set_shape);
-
-        // virtual event
         LISTEN(&server->virtual_pointer_manager->events.new_virtual_pointer, &server->events.new_virtual_pointer, server->handle->new_virtual_pointer);
 
         // seat event

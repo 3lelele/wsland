@@ -24,6 +24,7 @@ extern const struct wlr_pointer_impl wsland_pointer_impl;
 
 typedef enum wsland_cursor_mode {
     WSLAND_CURSOR_PASSTHROUGH,
+    WSLAND_CURSOR_PRESSED,
     WSLAND_CURSOR_RESIZE,
     WSLAND_CURSOR_MOVE,
 } wsland_cursor_mode;
@@ -56,6 +57,7 @@ typedef struct wsland_server_handle {
     void (*cursor_button)(struct wl_listener *listener, void *data);
     void (*cursor_axis)(struct wl_listener *listener, void *data);
     void (*cursor_frame)(struct wl_listener *listener, void *data);
+    void (*new_constraint)(struct wl_listener *listener, void *data);
     void (*request_set_shape)(struct wl_listener *listener, void *data);
     void (*seat_request_cursor)(struct wl_listener *listener, void *data);
     void (*seat_request_selection)(struct wl_listener *listener, void *data);
@@ -126,6 +128,7 @@ typedef struct wsland_server {
     struct wlr_primary_selection_v1_device_manager *primary_selection_device_manager;
     struct wlr_xdg_output_manager_v1 *xdg_output_manager_v1;
     struct wlr_pointer_constraints_v1 *pointer_constraints;
+    struct wlr_pointer_constraint_v1 *active_constraint;
     struct wlr_output_manager_v1 *output_manager_v1;
     struct wlr_scene_output_layout *scene_layout;
     struct wlr_output_layout *output_layout;
@@ -139,6 +142,7 @@ typedef struct wsland_server {
     struct wl_list outputs;
     struct wl_list keyboards;
     struct wl_list windows;
+    bool zorder;
 
     struct {
         double x, y;
@@ -156,6 +160,7 @@ typedef struct wsland_server {
         struct wlr_surface *surface;
         int s_hotspot_x, s_hotspot_y;
         int b_hotspot_x, b_hotspot_y;
+        struct wlr_swapchain *swapchain;
         bool dirty;
 
         struct wl_listener destroy;
@@ -168,6 +173,7 @@ typedef struct wsland_server {
         struct wl_listener cursor_frame;
         struct wl_listener cursor_motion;
         struct wl_listener cursor_button;
+        struct wl_listener new_constraint;
         struct wl_listener request_cursor;
         struct wl_listener request_set_shape;
         struct wl_listener request_set_selection;

@@ -65,15 +65,16 @@ add_project_arguments(cc.get_supported_arguments([
  '-Werror=false'
 ]), language: 'c')
 
-wlroots_project = subproject(
-    'wlroots',
-    default_options: [
-        'xwayland=enabled'
-    ]
-)
-dep_wlroots = wlroots_project.get_variable('wlroots')
+#wlroots_project = subproject(
+#    'wlroots',
+#    default_options: [
+#        'xwayland=enabled'
+#    ]
+#)
+#dep_wlroots = wlroots_project.get_variable('wlroots')
 
-# dep_wlroots = dependency('wlroots-0.20', version : '>=0.20.0')
+dep_wlroots = dependency('wlroots-0.20', version : '>=0.20.0')
+dep_xwayland = dependency('xwayland', version : '>=24.1.9')
 dep_winpr = dependency('winpr2', version : '>=2.4.0')
 dep_freerdp = dependency('freerdp2', version : '>=2.4.0')
 dep_freerdp_server = dependency('freerdp-server2', version : '>=2.4.0')
@@ -83,7 +84,7 @@ dep_xkbcommon = dependency('xkbcommon', version : '>=1.11.0')
 dep_openssl = dependency('openssl', version: '>= 1.1.1')
 dep_pixman = dependency('pixman-1', version : '>=0.46.4')
 dep_xcb = dependency('xcb', version : '>=1.17.0')
-dep_xwayland = dependency('xwayland', version : '>=1.17.0')
+dep_xcb_icccm = dependency('xcb-icccm', version : '>=0.4.2')
 def_cairo = dependency('cairo', required: false, disabler: true)
 
 wayland_kwargs = {
@@ -104,5 +105,5 @@ cursor_shape_protocol = protocols_server_header['cursor-shape']
 
 executable('wsland', [sources, xdg_shell_protocol, pointer_constraints_protocol, cursor_shape_protocol], include_directories : [include_dir], dependencies : [
     dep_wlroots, dep_winpr, dep_freerdp, dep_rdpapplist, dep_freerdp_server, dep_wayland_server,
-    dep_pixman, def_cairo, dep_openssl, dep_xkbcommon, dep_xcb, dep_xwayland
+    dep_pixman, def_cairo, dep_openssl, dep_xkbcommon, dep_xcb, dep_xcb_icccm, dep_xwayland
 ], install: true)

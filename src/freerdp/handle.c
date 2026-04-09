@@ -262,7 +262,7 @@ static BOOL xf_input_synchronize_event(rdpInput *input, UINT32 flags) {
     wsland_peer *peer = (wsland_peer*)input->context;
     wsland_keyboard *keyboard = peer->keyboard;
 
-    /*struct timespec now;
+    struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
 
     for (int idx = 0; idx < MAX_FREERDP_KEYS; idx++) {
@@ -273,10 +273,10 @@ static BOOL xf_input_synchronize_event(rdpInput *input, UINT32 flags) {
             event.time_msec = timespec_to_msec(&now);
             event.state = WL_KEYBOARD_KEY_STATE_RELEASED;
             event.update_state = true;
-            event.keycode = idx;
+            event.keycode = idx - 8;
             wlr_keyboard_notify_key(&keyboard->keyboard, &event);
         }
-    }*/
+    }
 
     return TRUE;
 }
