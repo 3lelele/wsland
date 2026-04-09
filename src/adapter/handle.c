@@ -2,6 +2,8 @@
 #define _DEFAULT_SOURCE
 
 #include <assert.h>
+#include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <drm/drm_fourcc.h>
 #include <wlr/render/allocator.h>
@@ -28,6 +30,20 @@
 
 static uint32_t wsland_window_id = 0;
 static uint32_t wsland_surface_id = 0;
+
+static bool wsland_env_enabled(const char *name) {
+    const char *value = getenv(name);
+    if (!value) {
+        return false;
+    }
+
+    return
+        strcmp(value, "1") == 0 ||
+        strcmp(value, "true") == 0 ||
+        strcmp(value, "TRUE") == 0 ||
+        strcmp(value, "yes") == 0 ||
+        strcmp(value, "on") == 0;
+}
 
 static void scene_node_get_size(struct wlr_scene_node *node, int *width, int *height) {
     *width = 0;
@@ -184,7 +200,8 @@ static void wsland_window_update(struct detection_data *data) {
 
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_STYLE;
         window_state_order.style = RAIL_WINDOW_NORMAL_STYLE;
-        window_state_order.extendedStyle = WS_EX_LAYERED;
+        window_state_order.extendedStyle =
+            wsland_env_enabled("WSLAND_DISABLE_LAYERED_STYLE") ? 0 : WS_EX_LAYERED;
 
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_OWNER;
         window_state_order.ownerWindowId = data->window->parent_id;
@@ -749,18 +766,26 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
                 surface_command.contextId = 0;
                 surface_command.extra = NULL;
 
-                surface_command.codecId = RDPGFX_CODECID_ALPHA;
-                surface_command.length = alpha_size;
-                surface_command.data = &alpha[0];
-                gfx_ctx->SurfaceCommand(gfx_ctx, &surface_command);
-                wsland_trace(ADAPTER, INFO,
-                    "Surface command alpha: frame_id=%u window_id=%u surface_id=%u damage=%d,%d %dx%d bytes=%d opaque=%d",
-                    start_frame.frameId, window->window_id, window->surface_id,
-                    window->damage.x, window->damage.y, window->damage.width, window->damage.height,
-                    alpha_size, window->buffer_opaque);
-                wsland_trace(ADAPTER, INFO,
-                    "Surface alpha range: frame_id=%u window_id=%u surface_id=%u min=%u max=%u",
-                    start_frame.frameId, window->window_id, window->surface_id, alpha_min, alpha_max);
+                if (!wsland_env_enabled("WSLAND_DISABLE_GFX_ALPHA")) {
+                    surface_command.codecId = RDPGFX_CODECID_ALPHA;
+                    surface_command.length = alpha_size;
+                    surface_command.data = &alpha[0];
+                    gfx_ctx->SurfaceCommand(gfx_ctx, &surface_command);
+                    wsland_trace(ADAPTER, INFO,
+                        "Surface command alpha: frame_id=%u window_id=%u surface_id=%u damage=%d,%d %dx%d bytes=%d opaque=%d",
+                        start_frame.frameId, window->window_id, window->surface_id,
+                        window->damage.x, window->damage.y, window->damage.width, window->damage.height,
+                        alpha_size, window->buffer_opaque);
+                    wsland_trace(ADAPTER, INFO,
+                        "Surface alpha range: frame_id=%u window_id=%u surface_id=%u min=%u max=%u",
+                        start_frame.frameId, window->window_id, window->surface_id, alpha_min, alpha_max);
+                } else {
+                    wsland_trace(ADAPTER, INFO,
+                        "Surface command alpha skipped: frame_id=%u window_id=%u surface_id=%u damage=%d,%d %dx%d opaque=%d",
+                        start_frame.frameId, window->window_id, window->surface_id,
+                        window->damage.x, window->damage.y, window->damage.width, window->damage.height,
+                        window->buffer_opaque);
+                }
 
                 surface_command.codecId = RDPGFX_CODECID_UNCOMPRESSED;
                 surface_command.length = damage_size;
