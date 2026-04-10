@@ -192,6 +192,8 @@ static void wsland_window_update(struct detection_data *data) {
     WINDOW_ORDER_INFO window_order_info = {0};
     WINDOW_STATE_ORDER window_state_order = {0};
     const char *update_reason = "none";
+    bool include_title = false;
+    bool skip_title_update = false;
 
     window_order_info.windowId = data->window->window_id;
     window_order_info.fieldFlags = WINDOW_ORDER_TYPE_WINDOW;
@@ -273,15 +275,28 @@ static void wsland_window_update(struct detection_data *data) {
 
     RAIL_UNICODE_STRING rail_window_title = {0, NULL};
     if (data->title) {
-        if (utf8_string_to_rail_string(data->window->title, &rail_window_title)) {
+        if (!data->create && wsland_env_enabled("WSLAND_DISABLE_TITLE_UPDATE")) {
+            skip_title_update = true;
+        } else if (utf8_string_to_rail_string(data->window->title, &rail_window_title)) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TITLE;
             window_state_order.titleInfo = rail_window_title;
             update_reason = "title";
+            include_title = true;
         }
     }
 
     if (data->create) {
         update_reason = "create";
+    }
+
+    if (!data->create && window_order_info.fieldFlags == WINDOW_ORDER_TYPE_WINDOW) {
+        if (skip_title_update) {
+            wsland_trace(ADAPTER, INFO,
+                "Window update skipped: id=%u reason=title-disabled title=%s",
+                data->window->window_id,
+                data->window->title ? data->window->title : "(null)");
+        }
+        return;
     }
 
     wsland_trace(
@@ -327,7 +342,9 @@ static void wsland_window_update(struct detection_data *data) {
     update->EndPaint(update->context);
 
     if (data->title) {
+        if (include_title) {
         free(rail_window_title.string);
+        }
     }
 
     if (data->create) {
