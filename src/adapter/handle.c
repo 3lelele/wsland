@@ -209,7 +209,8 @@ static void wsland_window_update(struct detection_data *data) {
 
         if (!disable_owner_field) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_OWNER;
-            window_state_order.ownerWindowId = data->window->parent_id;
+            window_state_order.ownerWindowId =
+                data->window->parent_id ? data->window->parent_id : RAIL_DESKTOP_WINDOW_ID;
         }
 
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_CLIENT_AREA_OFFSET;
@@ -228,7 +229,8 @@ static void wsland_window_update(struct detection_data *data) {
     if (data->parent) {
         if (!disable_owner_field) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_OWNER;
-            window_state_order.ownerWindowId = data->window->parent_id;
+            window_state_order.ownerWindowId =
+                data->window->parent_id ? data->window->parent_id : RAIL_DESKTOP_WINDOW_ID;
         }
         update_reason = "parent";
     }
@@ -285,6 +287,8 @@ static void wsland_window_update(struct detection_data *data) {
         } else if (utf8_string_to_rail_string(data->window->title, &rail_window_title)) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TITLE;
             window_state_order.titleInfo = rail_window_title;
+            window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
+            window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
             update_reason = "title";
             include_title = true;
         }
