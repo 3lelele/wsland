@@ -237,7 +237,7 @@ static BOOL xf_peer_activate(freerdp_peer *rdp_peer) {
         }
         wsland_adapter_create_keyboard_for_peer(peer, settings);
         peer->flags |= WSLAND_PEER_OUTPUT_ENABLED;
-        wsland_trace(FREERDP, INFO, "Peer output enabled");
+        wsland_trace(FREERDP, INFO, "%s", "Peer output enabled");
     }
 
     if (!rail_clipboard_init(peer)) {
@@ -254,7 +254,6 @@ static BOOL xf_suppress_output(rdpContext *context, BYTE allow, const RECTANGLE_
 
 static BOOL xf_input_synchronize_event(rdpInput *input, UINT32 flags) {
     wsland_peer *peer = (wsland_peer*)input->context;
-    wsland_keyboard *keyboard = peer->keyboard;
 
     /*struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
