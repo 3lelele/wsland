@@ -153,7 +153,7 @@ struct detection_data {
     pixman_region32_t region;
     struct wl_array render_nodes;
 
-    bool create, update, offset, resize, parent, title;
+    bool create, update, offset, resize, parent, title, force_show;
 
     wsland_output *output;
     wsland_adapter *adapter;
@@ -230,6 +230,7 @@ static void wsland_window_update(struct detection_data *data) {
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_SHOW | WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
         window_state_order.showState = WINDOW_HIDE;
         window_state_order.TaskbarButton = 1;
+        data->window->rail_shown = false;
     }
 
     if (data->parent) {
@@ -248,44 +249,48 @@ static void wsland_window_update(struct detection_data *data) {
         update_reason = "offset";
     }
 
-    if (data->resize) {
+    if (data->resize || data->force_show) {
         bool has_content = !wlr_box_empty(&data->window->current);
         if (!data->create) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_SHOW | WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
             window_state_order.showState = has_content ? WINDOW_SHOW : WINDOW_HIDE;
             window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
+            if (data->force_show && !data->resize) {
+                update_reason = "show-sync";
+            }
         }
+        if (data->resize) {
+            window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_CLIENT_AREA_SIZE;
+            window_state_order.clientAreaWidth = data->window->current.width;
+            window_state_order.clientAreaHeight = data->window->current.height;
 
-        window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_CLIENT_AREA_SIZE;
-        window_state_order.clientAreaWidth = data->window->current.width;
-        window_state_order.clientAreaHeight = data->window->current.height;
+            window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_SIZE;
+            window_state_order.windowWidth = data->window->current.width;
+            window_state_order.windowHeight = data->window->current.height;
 
-        window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_SIZE;
-        window_state_order.windowWidth = data->window->current.width;
-        window_state_order.windowHeight = data->window->current.height;
+            RECTANGLE_16 window_rect = {
+                .left = 0,
+                .top = 0,
+                .right = data->window->current.width,
+                .bottom = data->window->current.height
+            };
 
-        RECTANGLE_16 window_rect = {
-            .left = 0,
-            .top = 0,
-            .right = data->window->current.width,
-            .bottom = data->window->current.height
-        };
+            window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_RECTS;
+            window_state_order.numWindowRects = 1;
+            window_state_order.windowRects = &window_rect;
 
-        window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_RECTS;
-        window_state_order.numWindowRects = 1;
-        window_state_order.windowRects = &window_rect;
+            RECTANGLE_16 window_vis = {
+                .left = 0,
+                 .top = 0,
+                 .right = data->window->current.width,
+                 .bottom = data->window->current.height
+            };
 
-        RECTANGLE_16 window_vis = {
-            .left = 0,
-             .top = 0,
-             .right = data->window->current.width,
-             .bottom = data->window->current.height
-        };
-
-        window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_VISIBILITY;
-        window_state_order.numVisibilityRects = 1;
-        window_state_order.visibilityRects = &window_vis;
-        update_reason = "resize";
+            window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_VISIBILITY;
+            window_state_order.numVisibilityRects = 1;
+            window_state_order.visibilityRects = &window_vis;
+            update_reason = "resize";
+        }
     }
 
     RAIL_UNICODE_STRING rail_window_title = {0, NULL};
@@ -366,6 +371,10 @@ static void wsland_window_update(struct detection_data *data) {
         }
     }
 
+    if (window_order_info.fieldFlags & WINDOW_ORDER_FIELD_SHOW) {
+        data->window->rail_shown = (window_state_order.showState != WINDOW_HIDE);
+    }
+
     if (data->create) {
         RailServerContext *rail_ctx = data->adapter->freerdp->peer->ctx_server_rail;
 
@@ -442,6 +451,7 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
 
     if (!window->window_id) {
         window->window_id = ++wsland_window_id;
+        window->rail_shown = false;
         data.create = true;
     }
 
@@ -506,6 +516,13 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
             data.parent = true;
             data.update = true;
         }
+    }
+
+    if (!data.create &&
+        !window->rail_shown &&
+        !wlr_box_empty(&window->current)) {
+        data.force_show = true;
+        data.update = true;
     }
 
     if (data.update) {

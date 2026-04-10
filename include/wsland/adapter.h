@@ -30,6 +30,7 @@ typedef struct wsland_window {
     struct wlr_texture *texture;
     uint32_t resize_serial;
     bool buffer_opaque;
+    bool rail_shown;
 
     union {
         struct wlr_xdg_surface *wayland;
