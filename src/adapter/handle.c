@@ -300,8 +300,10 @@ static void wsland_window_update(struct detection_data *data) {
         } else if (utf8_string_to_rail_string(data->window->title, &rail_window_title)) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TITLE;
             window_state_order.titleInfo = rail_window_title;
-            window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
-            window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
+            if (!data->create) {
+                window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
+                window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
+            }
             update_reason = "title";
             include_title = true;
         }
@@ -319,6 +321,14 @@ static void wsland_window_update(struct detection_data *data) {
                 data->window->title ? data->window->title : "(null)");
         }
         return;
+    }
+
+    if (!data->create &&
+        (window_order_info.fieldFlags & WINDOW_ORDER_FIELD_TASKBAR_BUTTON) == 0) {
+        /* Match weston rdprail behavior: always include taskbar button state in updates
+         * to avoid client-side taskbar state loss across partial WINDOW_STATE_ORDER updates. */
+        window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
+        window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
     }
 
     wsland_trace(
