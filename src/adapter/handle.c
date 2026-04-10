@@ -224,6 +224,12 @@ static void wsland_window_update(struct detection_data *data) {
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_VIS_OFFSET;
         window_state_order.visibleOffsetX = 0;
         window_state_order.visibleOffsetY = 0;
+
+        /* Align create semantics with weston rdprail: create hidden first,
+         * then transition to visible on a following update once content is flowing. */
+        window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_SHOW | WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
+        window_state_order.showState = WINDOW_HIDE;
+        window_state_order.TaskbarButton = 1;
     }
 
     if (data->parent) {
@@ -244,9 +250,11 @@ static void wsland_window_update(struct detection_data *data) {
 
     if (data->resize) {
         bool has_content = !wlr_box_empty(&data->window->current);
-        window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_SHOW | WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
-        window_state_order.showState = has_content ? WINDOW_SHOW : WINDOW_HIDE;
-        window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
+        if (!data->create) {
+            window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_SHOW | WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
+            window_state_order.showState = has_content ? WINDOW_SHOW : WINDOW_HIDE;
+            window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
+        }
 
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_CLIENT_AREA_SIZE;
         window_state_order.clientAreaWidth = data->window->current.width;
@@ -311,7 +319,7 @@ static void wsland_window_update(struct detection_data *data) {
     wsland_trace(
         ADAPTER,
         INFO,
-        "Window %s: id=%u reason=%s title=%s field_flags=0x%x owner=%u owner_field_disabled=%d style=0x%x exstyle=0x%x show=%u pos=%d,%d size=%dx%d client=%dx%d visible_offset=%d,%d client_offset=%d,%d client_delta=%d,%d rects=%u vis_rects=%u pending=%d,%d %dx%d",
+        "Window %s: id=%u reason=%s title=%s field_flags=0x%x owner=%u owner_field_disabled=%d style=0x%x exstyle=0x%x show=%u taskbar=%u pos=%d,%d size=%dx%d client=%dx%d visible_offset=%d,%d client_offset=%d,%d client_delta=%d,%d rects=%u vis_rects=%u pending=%d,%d %dx%d",
         data->create ? "create" : "update",
         data->window->window_id,
         update_reason,
@@ -322,6 +330,7 @@ static void wsland_window_update(struct detection_data *data) {
         window_state_order.style,
         window_state_order.extendedStyle,
         window_state_order.showState,
+        window_state_order.TaskbarButton,
         window_state_order.windowOffsetX,
         window_state_order.windowOffsetY,
         window_state_order.windowWidth,
