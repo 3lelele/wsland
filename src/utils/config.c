@@ -8,7 +8,7 @@
 wsland_config* wsland_config_create(int argc, char *argv[]) {
     wsland_config *config = calloc(1, sizeof(*config));
     if (!config) {
-        wsland_log(CONFIG, ERROR, "calloc failed for wsland_config");
+        wsland_log(CONFIG, ERROR, "%s", "calloc failed for wsland_config");
         goto create_failed;
     }
 
@@ -47,7 +47,7 @@ wsland_config* wsland_config_create(int argc, char *argv[]) {
             char *end_ptr;
             int port = (int)strtol(temp_port, &end_ptr, 10);
             if (*end_ptr || port <= 0 || port > 65535) {
-                wsland_log(CONFIG, ERROR, "expected env [ WSLAND_PORT ] to be a positive integer less or equal to 65535");
+                wsland_log(CONFIG, ERROR, "%s", "expected env [ WSLAND_PORT ] to be a positive integer less or equal to 65535");
                 goto create_failed;
             }
             config->port = port;

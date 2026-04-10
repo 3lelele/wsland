@@ -70,14 +70,14 @@ static UINT rdpgfx_client_caps_advertise(RdpgfxServerContext *context, const RDP
     gfx_ctx->CapsConfirm(gfx_ctx, &capsConfirm);
 
     peer->activation_graphics_completed = TRUE;
-    wsland_trace(FREERDP, INFO, "RDPGFX activation marked complete");
+    wsland_trace(FREERDP, INFO, "%s", "RDPGFX activation marked complete");
     return CHANNEL_RC_OK;
 }
 
 static UINT rdpgfx_client_cache_import_offer(RdpgfxServerContext *context, const RDPGFX_CACHE_IMPORT_OFFER_PDU *cacheImportOffer) {
     wsland_peer *peer = context->custom;
 
-    wsland_log(FREERDP, DEBUG, "Client: GrfxCacheImportOffer");
+    wsland_log(FREERDP, DEBUG, "%s", "Client: GrfxCacheImportOffer");
     return CHANNEL_RC_OK;
 }
 

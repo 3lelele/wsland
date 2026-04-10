@@ -14,19 +14,19 @@ static int create_vsock_fd(int port) {
     int socket_fd = socket(AF_VSOCK, SOCK_STREAM | SOCK_CLOEXEC, 0);
 
     if (socket_fd < 0) {
-        wsland_log(FREERDP, INFO, "fail to create vsocket");
+        wsland_log(FREERDP, INFO, "%s", "fail to create vsocket");
         return -1;
     }
 
     const int bufferSize = 65536;
 
     if (setsockopt(socket_fd, SOL_SOCKET, SO_SNDBUF, &bufferSize, sizeof(bufferSize)) < 0) {
-        wsland_log(FREERDP, INFO, "fail to setsockopt SO_SNDBUF");
+        wsland_log(FREERDP, INFO, "%s", "fail to setsockopt SO_SNDBUF");
         return -1;
     }
 
     if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVBUF, &bufferSize, sizeof(bufferSize)) < 0) {
-        wsland_log(FREERDP, INFO, "fail to setsockopt SO_RCVBUF");
+        wsland_log(FREERDP, INFO, "%s", "fail to setsockopt SO_RCVBUF");
         return -1;
     }
 
@@ -39,7 +39,7 @@ static int create_vsock_fd(int port) {
     socklen_t socket_addr_size = sizeof(socket_address);
 
     if (bind(socket_fd, (const struct sockaddr*)&socket_address, socket_addr_size) < 0) {
-        wsland_log(FREERDP, INFO, "fail to bind socket to address socket");
+        wsland_log(FREERDP, INFO, "%s", "fail to bind socket to address socket");
         close(socket_fd);
         return -2;
     }
@@ -47,7 +47,7 @@ static int create_vsock_fd(int port) {
     int status = listen(socket_fd, 1);
 
     if (status != 0) {
-        wsland_log(FREERDP, INFO, "fail to listen on socket");
+        wsland_log(FREERDP, INFO, "%s", "fail to listen on socket");
         close(socket_fd);
         return -4;
     }
@@ -82,7 +82,7 @@ static int rdp_listener_activity(int fd, uint32_t mask, void *data) {
     }
 
     if (!listener->CheckFileDescriptor(listener)) {
-        wsland_log(FREERDP, ERROR, "failed to check freerdp file descriptor");
+        wsland_log(FREERDP, ERROR, "%s", "failed to check freerdp file descriptor");
         return -1;
     }
     return 0;
@@ -91,13 +91,13 @@ static int rdp_listener_activity(int fd, uint32_t mask, void *data) {
 wsland_freerdp *wsland_freerdp_create(wsland_config *config, wsland_adapter *adapter) {
     wsland_freerdp *freerdp = calloc(1, sizeof(*freerdp));
     if (!freerdp) {
-        wsland_log(FREERDP, ERROR, "calloc failed for wsland_freerdp");
+        wsland_log(FREERDP, ERROR, "%s", "calloc failed for wsland_freerdp");
         goto create_failed;
     }
 
     freerdp->listener = freerdp_listener_new();
     if (!freerdp->listener) {
-        wsland_log(FREERDP, ERROR, "failed to invoke freerdp_listener_new");
+        wsland_log(FREERDP, ERROR, "%s", "failed to invoke freerdp_listener_new");
         goto create_failed;
     }
 
@@ -119,7 +119,7 @@ wsland_freerdp *wsland_freerdp_create(wsland_config *config, wsland_adapter *ada
     }
     else {
         if (!freerdp->listener->Open(freerdp->listener, config->address, config->port)) {
-            wsland_log(FREERDP, ERROR, "failed to invoke freerdp Open");
+            wsland_log(FREERDP, ERROR, "%s", "failed to invoke freerdp Open");
             goto create_failed;
         }
     }
@@ -127,7 +127,7 @@ wsland_freerdp *wsland_freerdp_create(wsland_config *config, wsland_adapter *ada
     HANDLE handles[MAX_FREERDP_FDS] = {0};
     int handle_count = freerdp->listener->GetEventHandles(freerdp->listener, handles, MAX_FREERDP_FDS);
     if (!handle_count) {
-        wsland_log(FREERDP, ERROR, "failed to invoke freerdp GetFileDescriptor");
+        wsland_log(FREERDP, ERROR, "%s", "failed to invoke freerdp GetFileDescriptor");
         goto create_failed;
     }
 

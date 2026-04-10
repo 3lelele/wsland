@@ -153,7 +153,7 @@ static bool rdp_peer_init(wsland_freerdp *freerdp, freerdp_peer *rdp_peer) {
 
     wsland_peer_handle_init(peer);
     if (!peer->handle) {
-        wsland_log(FREERDP, ERROR, "failed to invoke wsland_peer_event_init");
+        wsland_log(FREERDP, ERROR, "%s", "failed to invoke wsland_peer_event_init");
         goto init_failed;
     }
 
@@ -168,7 +168,7 @@ static bool rdp_peer_init(wsland_freerdp *freerdp, freerdp_peer *rdp_peer) {
     rdp_peer->context->settings->NlaSecurity = FALSE;
 
     if (!rdp_peer->Initialize(rdp_peer)) {
-        wsland_log(FREERDP, ERROR, "failed to invoke freerdp peer Initialize");
+        wsland_log(FREERDP, ERROR, "%s", "failed to invoke freerdp peer Initialize");
         goto init_failed;
     }
     start = true;
@@ -208,7 +208,7 @@ static bool rdp_peer_init(wsland_freerdp *freerdp, freerdp_peer *rdp_peer) {
     HANDLE handles[MAX_FREERDP_FDS + 1];
     int handle_count = rdp_peer->GetEventHandles(rdp_peer, handles, MAX_FREERDP_FDS);
     if (!handle_count) {
-        wsland_log(FREERDP, ERROR, "failed to invoke freerdp peer GetEventHandles");
+        wsland_log(FREERDP, ERROR, "%s", "failed to invoke freerdp peer GetEventHandles");
         goto init_failed;
     }
 
@@ -219,7 +219,7 @@ static bool rdp_peer_init(wsland_freerdp *freerdp, freerdp_peer *rdp_peer) {
         handles[handle_count++] = WTSVirtualChannelManagerGetEventHandle(peer->vcm);
     }
     else {
-        wsland_log(FREERDP, ERROR, "failed to invoke freerdp peer WTSOpenServerA");
+        wsland_log(FREERDP, ERROR, "%s", "failed to invoke freerdp peer WTSOpenServerA");
     }
 
     int i;
@@ -236,7 +236,7 @@ static bool rdp_peer_init(wsland_freerdp *freerdp, freerdp_peer *rdp_peer) {
     }
 
     if (!dispatch_task_init(peer)) {
-        wsland_log(FREERDP, ERROR, "failed to invoke rdp_dispatch_task_init");
+        wsland_log(FREERDP, ERROR, "%s", "failed to invoke rdp_dispatch_task_init");
         goto init_failed;
     }
 
@@ -257,7 +257,7 @@ BOOL wsland_freerdp_incoming_peer(freerdp_listener *listener, freerdp_peer *peer
     wsland_freerdp *freerdp = listener->param4;
 
     if (!rdp_peer_init(freerdp, peer)) {
-        wsland_log(FREERDP, ERROR, "Error initializing incoming peer");
+        wsland_log(FREERDP, ERROR, "%s", "Error initializing incoming peer");
         return FALSE;
     }
     return TRUE;

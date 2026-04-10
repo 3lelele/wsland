@@ -65,20 +65,20 @@ static void notify_wslgd_ready(wsland_server *server) {
 wsland_server *wsland_server_create(wsland_config *config) {
     wsland_server *server = calloc(1, sizeof(*server));
     if (!server) {
-        wsland_log(SERVER, ERROR, "calloc failed for wsland_server");
+        wsland_log(SERVER, ERROR, "%s", "calloc failed for wsland_server");
         goto create_failed;
     }
 
     server->config = config;
     server->display = wl_display_create();
     if (!server->display) {
-        wsland_log(SERVER, ERROR, "failed to invoke wl_display_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wl_display_create");
         goto create_failed;
     }
 
     server->event_loop = wl_display_get_event_loop(server->display);
     if (!server->event_loop) {
-        wsland_log(SERVER, ERROR, "failed to invoke wl_display_get_event_loop");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wl_display_get_event_loop");
         goto create_failed;
     }
 
@@ -86,150 +86,150 @@ wsland_server *wsland_server_create(wsland_config *config) {
     setenv("WLR_HEADLESS_OUTPUTS", "0", true);
     server->backend = wlr_headless_backend_create(server->event_loop);
     if (!server->backend) {
-        wsland_log(SERVER, ERROR, "failed to invoke wlr_headless_backend_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_headless_backend_create");
         goto create_failed;
     }
 
     server->renderer = wlr_renderer_autocreate(server->backend);
     if (!server->renderer) {
-        wsland_log(SERVER, ERROR, "failed to invoke wlr_renderer_autocreate");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_renderer_autocreate");
         goto create_failed;
     }
 
     if (!wlr_renderer_init_wl_display(server->renderer, server->display)) {
-        wsland_log(SERVER, ERROR, "failed to invoke wlr_renderer_init_wl_display");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_renderer_init_wl_display");
         goto create_failed;
     }
 
     server->allocator = wlr_allocator_autocreate(server->backend, server->renderer);
     if (!server->allocator) {
-        wsland_log(SERVER, ERROR, "failed to invoke wlr_allocator_autocreate");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_allocator_autocreate");
         goto create_failed;
     }
 
     server->compositor = wlr_compositor_create(server->display, 5, server->renderer);
     if (!server->compositor) {
-       wsland_log(SERVER, ERROR, "failed to invoke wlr_compositor_create");
+       wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_compositor_create");
         goto create_failed;
     }
 
     server->subcompositor = wlr_subcompositor_create(server->display);
     if (!server->subcompositor) {
-        wsland_log(SERVER, ERROR, "failed to invoke wlr_subcompositor_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_subcompositor_create");
         goto create_failed;
     }
 
     server->data_device_manager = wlr_data_device_manager_create(server->display);
     if (!server->data_device_manager) {
-        wsland_log(SERVER, ERROR, "failed to invoke wlr_data_device_manager_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_data_device_manager_create");
         goto create_failed;
     }
 
     server->data_control_manager = wlr_data_control_manager_v1_create(server->display);
     if (!server->data_control_manager) {
-        wsland_log(SERVER, ERROR, "failed to invoke wlr_data_control_manager_v1_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_data_control_manager_v1_create");
         goto create_failed;
     }
 
     server->primary_selection_device_manager = wlr_primary_selection_v1_device_manager_create(server->display);
     if (!server->primary_selection_device_manager) {
-        wsland_log(SERVER, ERROR, "failed to invoke wlr_primary_selection_v1_device_manager_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_primary_selection_v1_device_manager_create");
         goto create_failed;
     }
 
     server->output_layout = wlr_output_layout_create(server->display);
     if (!server->output_layout) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_output_layout_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_output_layout_create");
         goto create_failed;
     }
 
     server->xdg_output_manager_v1 = wlr_xdg_output_manager_v1_create(server->display, server->output_layout);
     if (!server->xdg_output_manager_v1) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_xdg_output_manager_v1_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_xdg_output_manager_v1_create");
         goto create_failed;
     }
 
     server->output_manager_v1 = wlr_output_manager_v1_create(server->display);
     if (!server->output_manager_v1) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_output_manager_v1_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_output_manager_v1_create");
         goto create_failed;
     }
 
     server->scene = wlr_scene_create();
     if (!server->scene) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_scene_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_scene_create");
         goto create_failed;
     }
 
     server->scene_layout = wlr_scene_attach_output_layout(server->scene, server->output_layout);
     if (!server->scene_layout) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_scene_attach_output_layout");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_scene_attach_output_layout");
         goto create_failed;
     }
 
     server->xdg_shell = wlr_xdg_shell_create(server->display, 3);
     if (!server->xdg_shell) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_xdg_shell_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_xdg_shell_create");
         goto create_failed;
     }
 
     server->pointer_constraints = wlr_pointer_constraints_v1_create(server->display);
     if (!server->pointer_constraints) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_pointer_constraints_v1_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_pointer_constraints_v1_create");
         goto create_failed;
     }
 
     server->relative_pointer_manager = wlr_relative_pointer_manager_v1_create(server->display);
     if (!server->relative_pointer_manager) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_relative_pointer_manager_v1_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_relative_pointer_manager_v1_create");
         goto create_failed;
     }
 
     server->cursor = wlr_cursor_create();
     if (!server->cursor) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_cursor_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_cursor_create");
         goto create_failed;
     }
 
     server->cursor_manager = wlr_xcursor_manager_create("default", 42);
     if (!server->cursor_manager) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_xcursor_manager_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_xcursor_manager_create");
         goto create_failed;
     }
 
     server->seat = wlr_seat_create(server->display, "seat0");
     if (!server->seat) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_seat_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_seat_create");
         goto create_failed;
     }
 
     server->viewporter = wlr_viewporter_create(server->display);
     if (!server->viewporter) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_viewporter_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_viewporter_create");
         goto create_failed;
     }
 
     server->server_decoration_manager = wlr_server_decoration_manager_create(server->display);
     if (!server->server_decoration_manager) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_server_decoration_manager_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_server_decoration_manager_create");
         goto create_failed;
     }
 
     server->xdg_decoration_manager = wlr_xdg_decoration_manager_v1_create(server->display);
     if (!server->xdg_decoration_manager) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_xdg_decoration_manager_v1_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_xdg_decoration_manager_v1_create");
         goto create_failed;
     }
 
     server->handle = wsland_server_handle_init(server);
     if (!server->handle) {
-        wsland_log(SERVER, ERROR, "failed to invoke wsland_server_handle_init");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wsland_server_handle_init");
         goto create_failed;
     }
 
     server->xwayland = wlr_xwayland_create(server->display, server->compositor, true);
     if (!server->xwayland) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_xwayland_create");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_xwayland_create");
         goto create_failed;
     }
 
@@ -274,13 +274,13 @@ wsland_server *wsland_server_create(wsland_config *config) {
     } else {
         server->socket_name = wl_display_add_socket_auto(server->display);
         if (!server->socket_name) {
-            wsland_log(SERVER, ERROR,  "failed to invoke wl_display_add_socket_auto");
+            wsland_log(SERVER, ERROR, "%s", "failed to invoke wl_display_add_socket_auto");
             goto create_failed;
         }
     }
 
     if (!wlr_backend_start(server->backend)) {
-        wsland_log(SERVER, ERROR,  "failed to invoke wlr_backend_start");
+        wsland_log(SERVER, ERROR, "%s", "failed to invoke wlr_backend_start");
         goto create_failed;
     }
 

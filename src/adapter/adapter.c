@@ -56,7 +56,7 @@ void wsland_adapter_create_keyboard_for_peer(wsland_peer *peer, rdpSettings *set
 
     wsland_keyboard *keyboard = calloc(1, sizeof(*keyboard));
     if (!keyboard) {
-        wsland_log(ADAPTER, ERROR, "calloc failed for wsland_keyboard");
+        wsland_log(ADAPTER, ERROR, "%s", "calloc failed for wsland_keyboard");
         return;
     }
     peer->keyboard = keyboard;
@@ -93,7 +93,7 @@ void wsland_adapter_create_output_for_peer(wsland_peer *peer, rdpMonitor *monito
         monitor->is_primary
     );
     if (!output) {
-        wsland_log(ADAPTER, ERROR, "failed to invoke wsland_output_init");
+        wsland_log(ADAPTER, ERROR, "%s", "failed to invoke wsland_output_init");
         return;
     }
 
@@ -106,14 +106,14 @@ void wsland_adapter_create_output_for_peer(wsland_peer *peer, rdpMonitor *monito
 wsland_adapter* wsland_adapter_create(wsland_server *server) {
     wsland_adapter *adapter = calloc(1, sizeof(*adapter));
     if (!server) {
-        wsland_log(ADAPTER, ERROR, "calloc failed for wsland_adapter");
+        wsland_log(ADAPTER, ERROR, "%s", "calloc failed for wsland_adapter");
         return NULL;
     }
     adapter->server = server;
 
     adapter->handle = wsland_adapter_handle_init(adapter);
     if (!adapter->handle) {
-        wsland_log(ADAPTER, ERROR, "failed to invoke wsland_adapter_handle_init");
+        wsland_log(ADAPTER, ERROR, "%s", "failed to invoke wsland_adapter_handle_init");
         goto create_failed;
     }
 

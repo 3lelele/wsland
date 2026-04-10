@@ -130,7 +130,7 @@ bool wlr_output_is_wsland(struct wlr_output *wlr_output) {
 wsland_output *wsland_output_create(wsland_server *server, int x, int y, int width, int height, bool primary) {
     wsland_output *output = calloc(1, sizeof(*output));
     if (!output) {
-        wsland_log(SERVER, ERROR, "failed to allocate wsland_output");
+        wsland_log(SERVER, ERROR, "%s", "failed to allocate wsland_output");
         return NULL;
     }
 

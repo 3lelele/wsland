@@ -156,22 +156,22 @@ static bool rail_peer_init(wsland_peer *peer) {
 }
 
 static BOOL xf_peer_adjust_monitor_layout(freerdp_peer *rdp_peer) {
-    wsland_log(FREERDP, INFO, "invoke ==> xf_peer_adjust_monitor_layout");
+    wsland_log(FREERDP, INFO, "%s", "invoke ==> xf_peer_adjust_monitor_layout");
     return TRUE;
 }
 
 static BOOL xf_peer_capabilities(freerdp_peer *rdp_peer) {
-    wsland_log(FREERDP, INFO, "invoke ==> xf_peer_capabilities");
+    wsland_log(FREERDP, INFO, "%s", "invoke ==> xf_peer_capabilities");
     return TRUE;
 }
 
 static BOOL xf_peer_post_connect(freerdp_peer *rdp_peer) {
-    wsland_log(FREERDP, INFO, "invoke ==> xf_peer_post_connect");
+    wsland_log(FREERDP, INFO, "%s", "invoke ==> xf_peer_post_connect");
     return TRUE;
 }
 
 static BOOL xf_peer_activate(freerdp_peer *rdp_peer) {
-    wsland_log(FREERDP, INFO, "invoke ==> xf_peer_activate");
+    wsland_log(FREERDP, INFO, "%s", "invoke ==> xf_peer_activate");
 
     wsland_peer *peer = (wsland_peer*)rdp_peer->context;
     rdpSettings *settings = rdp_peer->settings;
