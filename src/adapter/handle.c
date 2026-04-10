@@ -270,10 +270,10 @@ static void wsland_window_update(struct detection_data *data) {
             window_state_order.windowHeight = data->window->current.height;
 
             RECTANGLE_16 window_rect = {
-                .left = 0,
-                .top = 0,
-                .right = data->window->current.width,
-                .bottom = data->window->current.height
+                .left = data->window->current.x,
+                .top = data->window->current.y,
+                .right = data->window->current.x + data->window->current.width,
+                .bottom = data->window->current.y + data->window->current.height
             };
 
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_RECTS;
@@ -281,10 +281,10 @@ static void wsland_window_update(struct detection_data *data) {
             window_state_order.windowRects = &window_rect;
 
             RECTANGLE_16 window_vis = {
-                .left = 0,
-                 .top = 0,
-                 .right = data->window->current.width,
-                 .bottom = data->window->current.height
+                .left = data->window->current.x,
+                 .top = data->window->current.y,
+                 .right = data->window->current.x + data->window->current.width,
+                 .bottom = data->window->current.y + data->window->current.height
             };
 
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_VISIBILITY;
