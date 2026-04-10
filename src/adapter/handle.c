@@ -231,6 +231,7 @@ static void wsland_window_update(struct detection_data *data) {
         window_state_order.showState = WINDOW_HIDE;
         window_state_order.TaskbarButton = 1;
         data->window->rail_shown = false;
+        data->window->rail_taskbar_button = 1;
     }
 
     if (data->parent) {
@@ -254,7 +255,7 @@ static void wsland_window_update(struct detection_data *data) {
         if (!data->create) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_SHOW | WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
             window_state_order.showState = has_content ? WINDOW_SHOW : WINDOW_HIDE;
-            window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
+            window_state_order.TaskbarButton = data->window->rail_taskbar_button;
             if (data->force_show && !data->resize) {
                 update_reason = "show-sync";
             }
@@ -302,7 +303,7 @@ static void wsland_window_update(struct detection_data *data) {
             window_state_order.titleInfo = rail_window_title;
             if (!data->create) {
                 window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
-                window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
+                window_state_order.TaskbarButton = data->window->rail_taskbar_button;
             }
             update_reason = "title";
             include_title = true;
@@ -328,7 +329,7 @@ static void wsland_window_update(struct detection_data *data) {
         /* Match weston rdprail behavior: always include taskbar button state in updates
          * to avoid client-side taskbar state loss across partial WINDOW_STATE_ORDER updates. */
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
-        window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
+        window_state_order.TaskbarButton = data->window->rail_taskbar_button;
     }
 
     wsland_trace(
@@ -383,6 +384,9 @@ static void wsland_window_update(struct detection_data *data) {
 
     if (window_order_info.fieldFlags & WINDOW_ORDER_FIELD_SHOW) {
         data->window->rail_shown = (window_state_order.showState != WINDOW_HIDE);
+    }
+    if (window_order_info.fieldFlags & WINDOW_ORDER_FIELD_TASKBAR_BUTTON) {
+        data->window->rail_taskbar_button = window_state_order.TaskbarButton;
     }
 
     if (data->create) {
@@ -462,6 +466,7 @@ static void wsland_window_detection(wsland_output *output, wsland_adapter *adapt
     if (!window->window_id) {
         window->window_id = ++wsland_window_id;
         window->rail_shown = false;
+        window->rail_taskbar_button = 1;
         data.create = true;
     }
 

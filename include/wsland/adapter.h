@@ -31,6 +31,7 @@ typedef struct wsland_window {
     uint32_t resize_serial;
     bool buffer_opaque;
     bool rail_shown;
+    uint8_t rail_taskbar_button;
 
     union {
         struct wlr_xdg_surface *wayland;
