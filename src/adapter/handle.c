@@ -31,6 +31,28 @@
 static uint32_t wsland_window_id = 0;
 static uint32_t wsland_surface_id = 0;
 
+static bool wsland_window_is_fullscreen(wsland_window *window) {
+    switch (window->type) {
+    case TOPLEVEL:
+        return window->wayland->toplevel->current.fullscreen;
+    case XWAYLAND:
+        return window->xwayland->fullscreen;
+    case POPUP:
+        return false;
+    }
+    return false;
+}
+
+static int wsland_client_area_height(wsland_window *window) {
+    int height = window->current.height;
+
+    if (!wsland_window_is_fullscreen(window) && height > 8) {
+        height -= 8;
+    }
+
+    return height;
+}
+
 static bool wsland_env_enabled(const char *name) {
     const char *value = getenv(name);
     if (!value) {
@@ -267,7 +289,7 @@ static void wsland_window_update(struct detection_data *data) {
         if (data->resize || data->force_show) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_CLIENT_AREA_SIZE;
             window_state_order.clientAreaWidth = data->window->current.width;
-            window_state_order.clientAreaHeight = data->window->current.height;
+            window_state_order.clientAreaHeight = wsland_client_area_height(data->window);
 
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_SIZE;
             window_state_order.windowWidth = data->window->current.width;
@@ -626,6 +648,8 @@ static void wsland_window_motion(struct wl_listener *listener, void *data) {
     window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_OFFSET;
     window_state_order.windowOffsetX = window->current.x = region.extents.x1;
     window_state_order.windowOffsetY = window->current.y = region.extents.y1;
+    window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
+    window_state_order.TaskbarButton = window->rail_taskbar_button;
     pixman_region32_fini(&region);
 
     struct rdp_update *update = adapter->freerdp->peer->peer->update;
