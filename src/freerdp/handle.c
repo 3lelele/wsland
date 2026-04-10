@@ -187,12 +187,12 @@ static BOOL xf_peer_activate(freerdp_peer *rdp_peer) {
         peer->freerdp->use_gfxredir);
 
     if (!settings->SurfaceCommandsEnabled) {
-        wlr_log(WLR_ERROR, "freerdp client does not support SurfaceCommands");
+        wlr_log(WLR_ERROR, "%s", "freerdp client does not support SurfaceCommands");
         return FALSE;
     }
 
     if (!settings->RemoteApplicationMode) {
-        wlr_log(WLR_ERROR, "freerdp client does not support RemoteApplicationMode");
+        wlr_log(WLR_ERROR, "%s", "freerdp client does not support RemoteApplicationMode");
         return FALSE;
     }
 
@@ -253,8 +253,6 @@ static BOOL xf_suppress_output(rdpContext *context, BYTE allow, const RECTANGLE_
 }
 
 static BOOL xf_input_synchronize_event(rdpInput *input, UINT32 flags) {
-    wsland_peer *peer = (wsland_peer*)input->context;
-
     /*struct timespec now;
     clock_gettime(CLOCK_MONOTONIC, &now);
 
