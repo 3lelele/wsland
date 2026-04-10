@@ -194,6 +194,7 @@ static void wsland_window_update(struct detection_data *data) {
     const char *update_reason = "none";
     bool include_title = false;
     bool skip_title_update = false;
+    bool disable_owner_field = wsland_env_enabled("WSLAND_DISABLE_OWNER_FIELD");
 
     window_order_info.windowId = data->window->window_id;
     window_order_info.fieldFlags = WINDOW_ORDER_TYPE_WINDOW;
@@ -206,8 +207,10 @@ static void wsland_window_update(struct detection_data *data) {
         window_state_order.extendedStyle =
             wsland_env_enabled("WSLAND_DISABLE_LAYERED_STYLE") ? 0 : WS_EX_LAYERED;
 
-        window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_OWNER;
-        window_state_order.ownerWindowId = data->window->parent_id;
+        if (!disable_owner_field) {
+            window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_OWNER;
+            window_state_order.ownerWindowId = data->window->parent_id;
+        }
 
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_CLIENT_AREA_OFFSET;
         window_state_order.clientOffsetX = 0;
@@ -223,8 +226,10 @@ static void wsland_window_update(struct detection_data *data) {
     }
 
     if (data->parent) {
-        window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_OWNER;
-        window_state_order.ownerWindowId = data->window->parent_id;
+        if (!disable_owner_field) {
+            window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_OWNER;
+            window_state_order.ownerWindowId = data->window->parent_id;
+        }
         update_reason = "parent";
     }
 
@@ -302,13 +307,14 @@ static void wsland_window_update(struct detection_data *data) {
     wsland_trace(
         ADAPTER,
         INFO,
-        "Window %s: id=%u reason=%s title=%s field_flags=0x%x owner=%u style=0x%x exstyle=0x%x show=%u pos=%d,%d size=%dx%d client=%dx%d visible_offset=%d,%d client_offset=%d,%d client_delta=%d,%d rects=%u vis_rects=%u pending=%d,%d %dx%d",
+        "Window %s: id=%u reason=%s title=%s field_flags=0x%x owner=%u owner_field_disabled=%d style=0x%x exstyle=0x%x show=%u pos=%d,%d size=%dx%d client=%dx%d visible_offset=%d,%d client_offset=%d,%d client_delta=%d,%d rects=%u vis_rects=%u pending=%d,%d %dx%d",
         data->create ? "create" : "update",
         data->window->window_id,
         update_reason,
         data->window->title ? data->window->title : "(null)",
         window_order_info.fieldFlags,
         window_state_order.ownerWindowId,
+        disable_owner_field ? 1 : 0,
         window_state_order.style,
         window_state_order.extendedStyle,
         window_state_order.showState,
