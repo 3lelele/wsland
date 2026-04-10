@@ -248,6 +248,10 @@ static void wsland_window_update(struct detection_data *data) {
         window_state_order.windowOffsetX = data->window->current.x;
         window_state_order.windowOffsetY = data->window->current.y;
         update_reason = "offset";
+    } else if (data->force_show) {
+        window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_OFFSET;
+        window_state_order.windowOffsetX = data->window->current.x;
+        window_state_order.windowOffsetY = data->window->current.y;
     }
 
     if (data->resize || data->force_show) {
@@ -255,12 +259,12 @@ static void wsland_window_update(struct detection_data *data) {
         if (!data->create) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_SHOW | WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
             window_state_order.showState = has_content ? WINDOW_SHOW : WINDOW_HIDE;
-            window_state_order.TaskbarButton = data->window->rail_taskbar_button;
+            window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
             if (data->force_show && !data->resize) {
                 update_reason = "show-sync";
             }
         }
-        if (data->resize) {
+        if (data->resize || data->force_show) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_CLIENT_AREA_SIZE;
             window_state_order.clientAreaWidth = data->window->current.width;
             window_state_order.clientAreaHeight = data->window->current.height;
@@ -290,7 +294,9 @@ static void wsland_window_update(struct detection_data *data) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_VISIBILITY;
             window_state_order.numVisibilityRects = 1;
             window_state_order.visibilityRects = &window_vis;
-            update_reason = "resize";
+            if (data->resize) {
+                update_reason = "resize";
+            }
         }
     }
 
@@ -303,7 +309,7 @@ static void wsland_window_update(struct detection_data *data) {
             window_state_order.titleInfo = rail_window_title;
             if (!data->create) {
                 window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
-                window_state_order.TaskbarButton = data->window->rail_taskbar_button;
+                window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
             }
             update_reason = "title";
             include_title = true;
