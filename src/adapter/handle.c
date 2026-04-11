@@ -400,6 +400,7 @@ static void wsland_window_update(struct detection_data *data) {
     update->BeginPaint(update->context);
     if (data->create) {
         update->window->WindowCreate(update->context, &window_order_info, &window_state_order);
+        data->adapter->freerdp->peer->is_window_zorder_dirty = true;
     } else {
         update->window->WindowUpdate(update->context, &window_order_info, &window_state_order);
     }
@@ -675,6 +676,7 @@ static void wsland_window_destroy(struct wl_listener *listener, void *data) {
     update->BeginPaint(update->context);
     update->window->WindowDelete(update->context, &window_order_info);
     update->EndPaint(update->context);
+    adapter->freerdp->peer->is_window_zorder_dirty = true;
 
     if (window->surface_id) {
         RDPGFX_DELETE_SURFACE_PDU deleteSurface = {0};
@@ -775,6 +777,48 @@ static void wsland_window_frame(struct wl_listener *listener, void *user_data) {
         }
     }
     RdpgfxServerContext *gfx_ctx = adapter->freerdp->peer->ctx_server_rdpgfx;
+
+    /* Sync window z-order before sending any window updates or frames.
+     * mstsc/msrdc needs this to know where new windows sit in the z-order. */
+    if (adapter->freerdp->peer->is_window_zorder_dirty) {
+        adapter->freerdp->peer->is_window_zorder_dirty = false;
+
+        uint32_t num_windows = 0;
+        wsland_window *zw;
+        wl_list_for_each(zw, &output->server->windows, server_link) {
+            if (zw->window_id) num_windows++;
+        }
+        /* +1 for the marker window */
+        uint32_t total = num_windows + 1;
+        uint32_t *ids = calloc(total, sizeof(uint32_t));
+        if (ids) {
+            uint32_t i = 0;
+            ids[i++] = RAIL_MARKER_WINDOW_ID;
+            wl_list_for_each(zw, &output->server->windows, server_link) {
+                if (zw->window_id && i < total) {
+                    ids[i++] = zw->window_id;
+                }
+            }
+
+            WINDOW_ORDER_INFO zorder_info = {
+                .windowId = RAIL_MARKER_WINDOW_ID,
+                .fieldFlags = WINDOW_ORDER_TYPE_DESKTOP |
+                              WINDOW_ORDER_FIELD_DESKTOP_ZORDER |
+                              WINDOW_ORDER_FIELD_DESKTOP_ACTIVE_WND,
+            };
+            MONITORED_DESKTOP_ORDER desktop_order = {
+                .activeWindowId = (i > 1) ? ids[1] : RAIL_DESKTOP_WINDOW_ID,
+                .numWindowIds = i,
+                .windowIds = ids,
+            };
+            struct rdp_update *update = adapter->freerdp->peer->peer->update;
+            update->window->MonitoredDesktop(update->context, &zorder_info, &desktop_order);
+            adapter->freerdp->peer->peer->DrainOutputBuffer(adapter->freerdp->peer->peer);
+            wsland_trace(ADAPTER, INFO, "Z-order sync: windows=%u active=0x%x",
+                i, desktop_order.activeWindowId);
+            free(ids);
+        }
+    }
 
     struct wl_array frame_nodes;
     wl_array_init(&frame_nodes);

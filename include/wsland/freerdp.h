@@ -100,6 +100,7 @@ typedef struct wsland_peer {
     bool activation_graphics_redirection_completed;
     bool is_acknowledged_suspended;
     bool mouse_button_swap;
+    bool is_window_zorder_dirty;
 
     struct wl_list dispatch_tasks;
     struct wl_event_source *dispatch_event_source;
