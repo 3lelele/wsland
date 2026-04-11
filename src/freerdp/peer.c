@@ -139,7 +139,8 @@ static bool rdp_peer_init(wsland_freerdp *freerdp, freerdp_peer *rdp_peer) {
     bool start = false;
 
     if (freerdp->peer) {
-        wsland_log(FREERDP, ERROR, "already a peer connection, system current only support single peer client!")
+        wsland_log(FREERDP, ERROR, "%s",
+            "already a peer connection, system current only support single peer client!");
         return false;
     }
 
