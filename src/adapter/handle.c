@@ -282,7 +282,7 @@ static void wsland_window_update(struct detection_data *data) {
         if (!data->create) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_SHOW | WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
             window_state_order.showState = has_content ? WINDOW_SHOW : WINDOW_HIDE;
-            window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
+            window_state_order.TaskbarButton = data->window->parent_id ? 0 : 1;
             if (data->force_show && !data->resize) {
                 update_reason = "show-sync";
             }
@@ -332,7 +332,7 @@ static void wsland_window_update(struct detection_data *data) {
             window_state_order.titleInfo = rail_window_title;
             if (!data->create) {
                 window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_TASKBAR_BUTTON;
-                window_state_order.TaskbarButton = data->window->parent_id ? 1 : 0;
+                window_state_order.TaskbarButton = data->window->parent_id ? 0 : 1;
             }
             update_reason = "title";
             include_title = true;
