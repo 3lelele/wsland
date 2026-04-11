@@ -54,6 +54,40 @@ static int wsland_client_area_height(wsland_window *window) {
     return height;
 }
 
+static void wsland_window_client_metrics(wsland_window *window,
+    int *client_offset_x, int *client_offset_y,
+    int *client_width, int *client_height) {
+    *client_offset_x = 0;
+    *client_offset_y = 0;
+    *client_width = window->current.width;
+    *client_height = wsland_client_area_height(window);
+
+    if (!window->handle || !window->handle->fetch_geometry) {
+        return;
+    }
+
+    struct wlr_box *geometry = window->handle->fetch_geometry(window);
+    if (!geometry) {
+        return;
+    }
+
+    /* Wayland toplevel scene extents can include shadows or other visual padding
+     * around the actual client geometry. Only treat the fetched geometry as a
+     * client-area offset when it is a rectangle fully contained inside the
+     * current window extents. */
+    if (geometry->x < 0 || geometry->y < 0 ||
+        geometry->width <= 0 || geometry->height <= 0 ||
+        geometry->x + geometry->width > window->current.width ||
+        geometry->y + geometry->height > window->current.height) {
+        return;
+    }
+
+    *client_offset_x = geometry->x;
+    *client_offset_y = geometry->y;
+    *client_width = geometry->width;
+    *client_height = geometry->height;
+}
+
 static bool wsland_env_enabled(const char *name) {
     const char *value = getenv(name);
     if (!value) {
@@ -218,6 +252,10 @@ static void wsland_window_update(struct detection_data *data) {
     bool include_title = false;
     bool skip_title_update = false;
     bool disable_owner_field = wsland_env_enabled("WSLAND_DISABLE_OWNER_FIELD");
+    int client_offset_x, client_offset_y, client_width, client_height;
+
+    wsland_window_client_metrics(data->window,
+        &client_offset_x, &client_offset_y, &client_width, &client_height);
 
     window_order_info.windowId = data->window->window_id;
     window_order_info.fieldFlags = WINDOW_ORDER_TYPE_WINDOW;
@@ -237,8 +275,8 @@ static void wsland_window_update(struct detection_data *data) {
         }
 
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_CLIENT_AREA_OFFSET;
-        window_state_order.clientOffsetX = 0;
-        window_state_order.clientOffsetY = 0;
+        window_state_order.clientOffsetX = client_offset_x;
+        window_state_order.clientOffsetY = client_offset_y;
 
         window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_CLIENT_DELTA;
         window_state_order.windowClientDeltaX = 0;
@@ -289,8 +327,8 @@ static void wsland_window_update(struct detection_data *data) {
         }
         if (data->resize || data->force_show) {
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_CLIENT_AREA_SIZE;
-            window_state_order.clientAreaWidth = data->window->current.width;
-            window_state_order.clientAreaHeight = wsland_client_area_height(data->window);
+            window_state_order.clientAreaWidth = client_width;
+            window_state_order.clientAreaHeight = client_height;
 
             window_order_info.fieldFlags |= WINDOW_ORDER_FIELD_WND_SIZE;
             window_state_order.windowWidth = data->window->current.width;
