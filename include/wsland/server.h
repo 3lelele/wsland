@@ -13,8 +13,12 @@
 
 #define WSLAND_DEFAULT_REFRESH (66 * 1000) // 60 Hz
 #define LISTEN(E, L, H) wl_signal_add((E), ((L)->notify = (H), (L)))
+#ifndef MAX
 #define MAX(A, B) ((A) > (B) ? (A) : (B))
+#endif
+#ifndef MIN
 #define MIN(A, B) ((A) < (B) ? (A) : (B))
+#endif
 
 struct wsland_server;
 struct wsland_window;

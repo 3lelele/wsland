@@ -13,6 +13,7 @@
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/xwayland/xwayland.h>
 #include <wlr/render/swapchain.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/render/pixman.h>
